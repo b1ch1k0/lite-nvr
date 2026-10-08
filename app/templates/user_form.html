@@ -1,0 +1,14 @@
+{% extends "base.html" %}{% block title %}{{ x.username }} — NVR{% endblock %}{% block body %}
+<form method="post" action="/admin/users/save" class="card">
+  <h2>მომხმარებელი: {{ x.username }}</h2>
+  <input type="hidden" name="id" value="{{ x.id }}">
+  <div class="cols">
+    <label>როლი<select name="role">{% for k, v in roles.items() %}<option value="{{ k }}" {% if k == x.role %}selected{% endif %}>{{ v }}</option>{% endfor %}</select></label>
+    <label>ახალი პაროლი<input name="password" type="password" minlength="8" placeholder="უცვლელი — ცარიელი" autocomplete="new-password"></label>
+  </div>
+  <div class="checks"><label><input type="checkbox" name="active" {% if x.active %}checked{% endif %}> აქტიური (გამორთვა = დაბლოკვა)</label></div>
+  <p class="muted">კამერებზე წვდომა:</p>
+  <div class="checks"><label class="all"><input type="checkbox" onchange="this.closest('form').querySelectorAll('[name=cams]').forEach(x => x.checked = this.checked)"> <b>ყველა კამერა</b></label>{% for c in cams %}<label><input type="checkbox" name="cams" value="{{ c.id }}" {% if c.id in mine %}checked{% endif %}> {{ c.name }}</label>{% endfor %}</div>
+  <div class="row"><span class="sp"></span><a class="btn" href="/admin/users">გაუქმება</a><button class="btn primary">შენახვა</button></div>
+</form>
+{% endblock %}

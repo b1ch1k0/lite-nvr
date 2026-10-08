@@ -1,0 +1,25 @@
+#!/bin/sh
+# nvrctl — NVR admin helper
+#   nvrctl link                  show the hidden login link
+#   nvrctl new-link              generate a new hidden login link (old one stops working)
+#   nvrctl reset-admin [name]    create admin or reset its password (prints the new password)
+#   nvrctl status                services, disk, version
+#   nvrctl version
+set -e
+[ "$(id -u)" = 0 ] || { echo "run as root: sudo nvrctl $*"; exit 1; }
+cd /opt/nvr
+if [ -x /opt/nvr/venv/bin/python ]; then PY=/opt/nvr/venv/bin/python; PP=""
+else PY=$(cat /opt/nvr/python 2>/dev/null || echo python3); PP=/opt/nvr/lib; fi
+py() { runuser -u nvr -- env NVR_DATA=/var/lib/nvr PYTHONPATH="$PP" "$PY" "$@"; }
+port() { sed -n 's/^ *listen \([0-9]*\) default_server;.*/\1/p' /etc/nginx/conf.d/nvr.conf /etc/nginx/sites-available/nvr 2>/dev/null | head -1; }
+url() { p=$(port); ip=$(hostname -I 2>/dev/null | awk '{print $1}'); [ "$p" = 80 ] || [ -z "$p" ] && echo "http://$ip$1" || echo "http://$ip:$p$1"; }
+case "${1:-help}" in
+  link)       url "$(py -m app.cli gate | tail -1)" ;;
+  new-link)   py -c "from app.main import gate_path; print('/s/' + gate_path(regenerate=True))" >/dev/null; url "$(py -m app.cli gate | tail -1)" ;;
+  reset-admin) py -m app.cli create-admin "${2:-admin}" ;;
+  version)    py -c "import app; print(app.__version__)" ;;
+  status)     echo "nvr $(py -c 'import app; print(app.__version__)')"
+              for s in nvr nvr-go2rtc nginx; do printf "  %-11s %s\n" "$s" "$(systemctl is-active $s)"; done
+              df -h /srv/nvr | tail -1 | awk '{print "  recordings  " $3 " used / " $2 " (" $5 ")"}' ;;
+  *)          sed -n '2,8p' "$0" ;;
+esac

@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="ka"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{% block title %}NVR{% endblock %}</title><link rel="stylesheet" href="/static/style.css?v=4"></head>
+<body>
+{% if user %}
+<nav>
+  <b class="brand">● NVR</b>
+  <a href="/live">ცოცხლად</a>
+  {% if user.role != 'viewer' %}<a href="/playback">ჩანაწერები</a>{% endif %}
+  {% if user.role == 'admin' %}
+    <a href="/admin/cameras">კამერები</a><a href="/admin/users">მომხმარებლები</a>
+    <a href="/admin/storage">შენახვა</a><a href="/admin/status">სტატუსი</a>
+  {% endif %}
+  <span class="sp"></span>
+  <a href="/account">{{ user.username }}</a>
+  <form method="post" action="/logout" class="inline"><button class="link">გასვლა</button></form>
+</nav>
+{% endif %}
+<main>
+{% if msg %}<div class="msg">{{ msg }}</div>{% endif %}
+{% if err %}<div class="err">{{ err }}</div>{% endif %}
+{% block body %}{% endblock %}
+</main>
+</body></html>

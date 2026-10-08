@@ -1,0 +1,19 @@
+[Unit]
+Description=NVR streaming engine (go2rtc)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=nvr
+Group=nvr
+ExecStart=/opt/nvr/bin/go2rtc -config /var/lib/nvr/go2rtc.yaml
+Restart=always
+RestartSec=3
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/nvr
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

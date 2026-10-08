@@ -1,0 +1,47 @@
+{% extends "base.html" %}{% block title %}ცოცხლად — NVR{% endblock %}{% block body %}
+{% include "_player.html" %}
+{% if cams %}
+<div class="row small"><span class="muted">ხარისხი:</span>
+  <button type="button" class="btn q" data-q="high">მაღალი (მთავარი ნაკადი)</button>
+  <button type="button" class="btn q" data-q="low">დაბალი (დამხმარე ნაკადი, ნელი კავშირისთვის)</button>
+  <span class="muted" id="qnote"></span></div>
+{% endif %}
+{% if not cams %}
+  <div class="card">კამერები არ გაქვთ მინიჭებული.{% if user.role == 'admin' %} <a href="/admin/cameras/new">დაამატეთ კამერა</a>.{% endif %}</div>
+{% endif %}
+<div class="grid">
+{% for c in cams %}
+  <div class="tile" id="t-{{ c.id }}">
+    <div class="tile-h"><a href="/cam/{{ c.id }}">{{ c.name }}</a>
+      <span class="badges"><span class="b-rec" hidden>● REC</span><span class="b-mot" hidden>მოძრაობა</span>
+        {% if c.ptz and user.role in ('admin', 'operator') %}<a class="b-ptz" href="/cam/{{ c.id }}" title="ტრიალი და ზუმი">🕹 PTZ</a>{% endif %}</span></div>
+    <div class="player" data-main="{{ c.id }}" data-sub="{{ c.id ~ ('__sub' if c.has_sub else '') }}"></div>
+    {% if user.role == 'admin' %}<div class="tile-f">{% include "_modes.html" %}</div>{% endif %}
+  </div>
+{% endfor %}
+</div>
+<script>
+// Quality is a per-browser choice: "high" plays every camera's main stream (needs ~12 Mbps for the full
+// grid over VPN), "low" the light sub-streams (~2 Mbps). Remembered in this browser only.
+let Q = 'high';
+try { Q = localStorage.getItem('nvr.quality') || 'high'; } catch (e) {}
+document.querySelectorAll('.q').forEach(b => {
+  b.classList.toggle('primary', b.dataset.q === Q);
+  b.onclick = () => { try { localStorage.setItem('nvr.quality', b.dataset.q); } catch (e) {} location.reload(); };
+});
+document.querySelectorAll('.player').forEach(p => mountPlayer(p, Q === 'high' ? p.dataset.main : p.dataset.sub));
+async function poll() {
+  try {
+    const s = await (await fetch('/state')).json();
+    for (const [id, v] of Object.entries(s)) {
+      const t = document.getElementById('t-' + id); if (!t) continue;
+      t.querySelector('.b-rec').hidden = !v.recording;
+      t.querySelector('.b-mot').hidden = !v.motion;
+      t.classList.toggle('moving', v.motion);
+    }
+  } catch (e) {}
+}
+poll(); setInterval(poll, 3000);
+</script>
+{% if user.role == 'admin' %}{% include "_modes_js.html" %}{% endif %}
+{% endblock %}

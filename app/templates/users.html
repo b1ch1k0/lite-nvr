@@ -1,0 +1,25 @@
+{% extends "base.html" %}{% block title %}მომხმარებლები — NVR{% endblock %}{% block body %}
+<h2>მომხმარებლები</h2>
+<table>
+<tr><th>სახელი</th><th>როლი</th><th>კამერები</th><th>სტატუსი</th><th></th></tr>
+{% for x in users %}
+<tr><td><b>{{ x.username }}</b></td><td>{{ roles[x.role] }}</td>
+  <td>{% if x.role == 'admin' %}<span class="muted">ყველა</span>{% else %}{{ x.cams|join(', ') or '—' }}{% endif %}</td>
+  <td>{% if x.active %}<span class="tag ok">აქტიური</span>{% else %}<span class="tag">დაბლოკილი</span>{% endif %}</td>
+  <td class="nowrap"><a class="btn" href="/admin/users/{{ x.id }}">რედაქტირება</a>
+  {% if x.id != user.id %}<form method="post" action="/admin/users/{{ x.id }}/delete" class="inline" onsubmit="return confirm('წავშალოთ {{ x.username }}?')"><button class="btn danger">წაშლა</button></form>{% endif %}</td></tr>
+{% endfor %}
+</table>
+<form method="post" action="/admin/users/save" class="card">
+  <h3>ახალი მომხმარებელი</h3>
+  <div class="cols">
+    <label>სახელი (ლათინურად)<input name="username" required pattern="[A-Za-z0-9._@-]{3,40}"></label>
+    <label>პაროლი (მინ. 8)<input name="password" type="password" minlength="8" required autocomplete="new-password"></label>
+    <label>როლი<select name="role">{% for k, v in roles.items() %}<option value="{{ k }}" {% if k == 'viewer' %}selected{% endif %}>{{ v }}</option>{% endfor %}</select></label>
+  </div>
+  <p class="muted">რომელ კამერებზე ჰქონდეს წვდომა (ადმინს ყველაზე აქვს):</p>
+  <div class="checks"><label class="all"><input type="checkbox" onchange="this.closest('form').querySelectorAll('[name=cams]').forEach(x => x.checked = this.checked)"> <b>ყველა კამერა</b></label>{% for c in cams %}<label><input type="checkbox" name="cams" value="{{ c.id }}"> {{ c.name }}</label>{% else %}<span class="muted">კამერები ჯერ არ არის</span>{% endfor %}</div>
+  <input type="hidden" name="active" value="1">
+  <button class="btn primary">დამატება</button>
+</form>
+{% endblock %}

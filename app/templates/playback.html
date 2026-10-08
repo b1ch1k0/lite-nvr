@@ -1,0 +1,129 @@
+{% extends "base.html" %}{% block title %}ჩანაწერები — NVR{% endblock %}{% block body %}
+{% if not cams %}<div class="card">ჩანაწერებზე წვდომა არ გაქვთ.</div>{% else %}
+<form class="row" method="get">
+  <select name="cam" onchange="this.form.day.value='';this.form.submit()">
+    {% for c in cams %}<option value="{{ c.id }}" {% if c.id == cam %}selected{% endif %}>{{ c.name }}</option>{% endfor %}
+  </select>
+  <select name="day" onchange="this.form.submit()">
+    {% for d in days %}<option {% if d == day %}selected{% endif %}>{{ d }}</option>{% else %}<option value="">ჩანაწერი არ არის</option>{% endfor %}
+  </select>
+  <span class="muted small">რეჟიმი: {{ mode }} · მოვლენები: {{ events|length }}</span>
+  <label class="sw"><input type="checkbox" id="onlymot"> მხოლოდ მოძრაობა</label>
+</form>
+
+<div class="tl-wrap">
+  <div class="tl" id="day"><div class="tl-cur"></div></div>
+  <div class="tl-ticks" id="dayticks"></div>
+  <div class="tl zoom" id="hour"><div class="tl-cur"></div></div>
+  <div class="tl-ticks" id="hourticks"></div>
+</div>
+
+<div class="pb">
+  <div>
+    <video id="v" controls playsinline muted></video>
+    <div class="row small"><span id="now" class="mono"></span><span class="sp"></span>
+      <button type="button" class="btn" id="prev">⏮ წინა</button>
+      <select id="rate"><option>0.5</option><option selected>1</option><option>2</option><option>4</option><option>8</option></select>
+      <button type="button" class="btn" id="next">შემდეგი ⏭</button>
+      {% if can_dl %}<a class="btn" id="dl" href="#">⬇ გადმოწერა</a>{% endif %}</div>
+  </div>
+  <div class="side">
+    {% if events %}
+    <h4>მოძრაობა ({{ events|length }})</h4>
+    <div class="evlist">
+    {% for e in events|reverse %}
+      <a href="#" class="ev" data-t="{{ e.t }}">
+        {% if e.snap %}<img loading="lazy" src="/ev/{{ cam }}/{{ e.id }}.jpg">{% else %}<span class="noimg"></span>{% endif %}
+        <span><b>{{ e.label }}</b><br><span class="muted small">{{ e.dur|int }}წმ{% if e.open %} · მიმდინარე{% endif %}</span></span></a>
+    {% endfor %}
+    </div>
+    {% endif %}
+    <h4>ფაილები ({{ files|length }})</h4>
+    <div class="seglist">
+    {% for f in files|reverse %}
+      <div class="seg{% if f.motion %} hasmot{% endif %}">
+        {% if f.live %}<span>{{ f.label }}</span><span class="tag rec">იწერება</span>
+        {% else %}<a href="#" data-i="{{ loop.revindex0 }}">{{ f.label }}</a>{% if f.motion %}<span class="dot" title="მოძრაობა"></span>{% endif %}
+          <span class="muted small">{{ '%.1f'|format(f.mb) }} MB</span>
+          {% if can_dl %}<a class="dl" href="/rec/{{ cam }}/{{ day }}/{{ f.name }}?dl=1" title="გადმოწერა">⬇</a>{% endif %}
+        {% endif %}
+      </div>
+    {% else %}<p class="muted">ამ დღეს ჩანაწერი არ არის.</p>{% endfor %}
+    </div>
+  </div>
+</div>
+<script>
+const CAM = {{ cam|tojson }}, DAY = {{ day|tojson }};
+const SEGS = {{ files|tojson }}.filter(f => !f.live), EVS = {{ events|tojson }};
+const v = document.getElementById('v'), dayEl = document.getElementById('day'), hourEl = document.getElementById('hour');
+let cur = -1, hourStart = 0;
+
+function fmt(t) { t = Math.max(0, Math.floor(t)); return [t / 3600 | 0, (t % 3600) / 60 | 0, t % 60].map(x => String(x).padStart(2, '0')).join(':'); }
+function bar(el, from, span) {
+  el.querySelectorAll('.s,.e').forEach(x => x.remove());
+  const add = (cls, t, d, title) => {
+    const a = Math.max(t, from), b = Math.min(t + d, from + span); if (b <= a) return;
+    const x = document.createElement('div'); x.className = cls; x.title = title || '';
+    x.style.left = ((a - from) / span * 100) + '%'; x.style.width = Math.max(.15, (b - a) / span * 100) + '%'; el.appendChild(x);
+  };
+  SEGS.forEach(s => add('s', s.t, s.dur));
+  EVS.forEach(e => add('e', e.t, e.dur, 'მოძრაობა ' + e.label));
+}
+function ticks(id, from, span, step) {
+  const el = document.getElementById(id); el.innerHTML = '';
+  for (let t = from; t <= from + span; t += step) {
+    const s = document.createElement('span'); s.style.left = ((t - from) / span * 100) + '%'; s.textContent = fmt(t).slice(0, 5); el.appendChild(s);
+  }
+}
+function setHour(t) {
+  hourStart = Math.max(0, Math.min(86400 - 3600, Math.floor(t / 3600) * 3600));
+  bar(hourEl, hourStart, 3600); ticks('hourticks', hourStart, 3600, 600);
+  dayEl.querySelectorAll('.win').forEach(x => x.remove());
+  const w = document.createElement('div'); w.className = 'win'; w.style.left = (hourStart / 864) + '%'; w.style.width = (3600 / 864) + '%'; dayEl.appendChild(w);
+}
+function segAt(t) {
+  let i = SEGS.findIndex(s => t >= s.t && t < s.t + s.dur);
+  if (i < 0) i = SEGS.findIndex(s => s.t > t);
+  return i;
+}
+function play(i, off) {
+  if (i < 0 || i >= SEGS.length) return;
+  const onlyMot = document.getElementById('onlymot').checked;
+  cur = i; const s = SEGS[i];
+  const src = `/rec/${CAM}/${DAY}/${s.name}`;
+  if (!v.src.endsWith(src)) v.src = src;
+  v.onloadedmetadata = () => { v.currentTime = Math.max(0, off || 0); v.playbackRate = +document.getElementById('rate').value; v.play(); };
+  if (v.readyState > 0 && v.src.endsWith(src)) { v.currentTime = Math.max(0, off || 0); v.play(); }
+  document.querySelectorAll('.seg a[data-i]').forEach(a => a.classList.toggle('on', +a.dataset.i === i));
+  const dl = document.getElementById('dl'); if (dl) dl.href = src + '?dl=1';
+  if (s.t < hourStart || s.t >= hourStart + 3600) setHour(s.t);
+}
+function seek(t) { const i = segAt(t); if (i >= 0) play(i, Math.max(0, t - SEGS[i].t)); }
+function nextIndex(i, dir) {
+  const onlyMot = document.getElementById('onlymot').checked;
+  for (let j = i + dir; j >= 0 && j < SEGS.length; j += dir) if (!onlyMot || SEGS[j].motion) return j;
+  return -1;
+}
+function clickBar(el, from, span) {
+  el.onclick = e => { const r = el.getBoundingClientRect(); const t = from() + (e.clientX - r.left) / r.width * span;
+    if (el === dayEl) setHour(t); seek(t); };
+}
+clickBar(dayEl, () => 0, 86400); clickBar(hourEl, () => hourStart, 3600);
+v.ontimeupdate = () => {
+  if (cur < 0) return; const t = SEGS[cur].t + v.currentTime;
+  document.getElementById('now').textContent = DAY + ' ' + fmt(t);
+  dayEl.querySelector('.tl-cur').style.left = (t / 864) + '%';
+  hourEl.querySelector('.tl-cur').style.left = ((t - hourStart) / 36) + '%';
+};
+v.onended = () => play(nextIndex(cur, 1), 0);
+document.getElementById('next').onclick = () => play(nextIndex(cur, 1), 0);
+document.getElementById('prev').onclick = () => play(nextIndex(cur, -1), 0);
+document.getElementById('rate').onchange = e => v.playbackRate = +e.target.value;
+document.querySelectorAll('.seg a[data-i]').forEach(a => a.onclick = e => { e.preventDefault(); play(+a.dataset.i, 0); });
+document.querySelectorAll('.ev').forEach(a => a.onclick = e => { e.preventDefault(); seek(+a.dataset.t - 3); });
+document.getElementById('onlymot').onchange = e => document.querySelectorAll('.seg:not(.hasmot)').forEach(x => x.style.display = e.target.checked ? 'none' : '');
+bar(dayEl, 0, 86400); ticks('dayticks', 0, 86400, 3 * 3600);
+setHour(SEGS.length ? SEGS[SEGS.length - 1].t : 0);
+</script>
+{% endif %}
+{% endblock %}

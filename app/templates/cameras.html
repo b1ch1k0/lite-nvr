@@ -1,0 +1,25 @@
+{% extends "base.html" %}{% block title %}კამერები — NVR{% endblock %}{% block body %}
+<div class="row"><h2>კამერები</h2><span class="sp"></span>
+  <a class="btn" href="/admin/onvif">🔍 ONVIF ძებნა / მიერთება</a>
+  <a class="btn primary" href="/admin/cameras/new">+ კამერის დამატება</a></div>
+<table>
+<tr><th></th><th>სახელი</th><th>მწარმოებელი / მისამართი</th><th>კავშირი</th><th>ჩაწერა და მოძრაობა</th><th>სტატუსი</th><th></th></tr>
+{% for c in cams %}
+<tr>
+  <td>{% if c.enabled %}<img class="thumb" loading="lazy" src="/api/frame.jpeg?src={{ c.id }}{{ '__sub' if c.sub_masked else '' }}" onerror="this.style.visibility='hidden'">{% endif %}</td>
+  <td><b>{{ c.name }}</b><br><span class="muted">{{ c.id }}</span>
+    <br><span class="small muted" title="ვის აქვს წვდომა (ადმინებს ყველაზე აქვთ)">👤 {{ c.viewers|join(', ') if c.viewers else 'მხოლოდ ადმინი' }}</span></td>
+  <td>{{ c.vendor_label }}<br><span class="mono small muted">{{ c.main_masked }}{% if c.sub_masked %}<br>{{ c.sub_masked }}{% endif %}</span></td>
+  <td>{% if not c.enabled %}<span class="tag">გამორთული</span>{% elif c.online %}<span class="tag ok">ონლაინ</span>{% elif c.has_consumers %}<span class="tag bad">არ პასუხობს</span>{% else %}<span class="tag">მოლოდინში</span>{% endif %}</td>
+  <td>{% if c.enabled %}{% include "_modes.html" %}{% endif %}</td>
+  <td class="small">{% if c.rec_state %}ჩაწერა: {{ c.rec_state }}<br>{% endif %}{% if c.det_state %}დეტექტორი: {{ c.det_state }}{% endif %}</td>
+  <td class="nowrap"><a class="btn" href="/admin/cameras/{{ c.id }}">რედაქტირება</a>
+    <form method="post" action="/admin/cameras/{{ c.id }}/delete" class="inline" onsubmit="if(!confirm('წავშალოთ {{ c.name }}?'))return false; this.wipe.value = confirm('ჩანაწერებიც წავშალოთ?') ? '1' : '';">
+      <input type="hidden" name="wipe"><button class="btn danger">წაშლა</button></form></td>
+</tr>
+{% else %}<tr><td colspan="7" class="muted">ჯერ კამერა არ არის დამატებული.</td></tr>{% endfor %}
+</table>
+<p class="muted small">„მხოლოდ მოძრაობისას“ — ჩაიწერება 1-წუთიანი ფაილები, მოძრაობის გარეშე დარჩენილი ფაილები ~2 წუთში იშლება (მოძრაობის წინა და შემდეგი წამებიც რჩება).
+„მოძრაობა“ 24/7 რეჟიმში მოვლენებს მონიშნავს ჩანაწერების დროის ზოლზე.</p>
+{% include "_modes_js.html" %}
+{% endblock %}

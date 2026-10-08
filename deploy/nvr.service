@@ -1,0 +1,23 @@
+[Unit]
+Description=NVR panel + recorder
+After=nvr-go2rtc.service
+Wants=nvr-go2rtc.service
+
+[Service]
+User=nvr
+Group=nvr
+WorkingDirectory=/opt/nvr
+Environment=NVR_DATA=/var/lib/nvr NVR_REC=/srv/nvr/rec NVR_EVENTS=/srv/nvr/events NVR_POSTERS=/srv/nvr/posters HOME=/var/lib/nvr
+ExecStart=/opt/nvr/bin/nvr-run
+Restart=always
+RestartSec=3
+KillSignal=SIGINT
+TimeoutStopSec=20
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/nvr /srv/nvr
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

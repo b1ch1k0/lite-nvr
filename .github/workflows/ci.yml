@@ -1,0 +1,17 @@
+name: CI
+on: [push, pull_request]
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - name: Python deps + import check
+        run: |
+          pip install -r requirements.txt
+          python -m compileall -q app
+          NVR_DATA=$(mktemp -d) NVR_REC=$(mktemp -d) NVR_EVENTS=$(mktemp -d) NVR_POSTERS=$(mktemp -d) \
+            python -c "import app.main, app.onvif, app.recorder, app.ptz; print('import ok')"
+      - name: ShellCheck
+        run: shellcheck -S warning install.sh setup.sh deploy/*.sh packaging/*.sh tools/*.sh bin/nvrctl bin/nvr-run

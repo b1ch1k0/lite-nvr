@@ -1,0 +1,73 @@
+{% extends "base.html" %}{% block title %}{{ cam.name }} — NVR{% endblock %}{% block body %}
+{% include "_player.html" %}
+<div class="row"><h2>{{ cam.name }}</h2><span class="sp"></span>
+{% if can_playback %}<a class="btn" href="/playback?cam={{ cam.id }}">ჩანაწერები</a>{% endif %}</div>
+<div class="camview{% if can_ptz %} with-ptz{% endif %}">
+  <div class="player big" id="p"></div>
+  {% if can_ptz %}
+  <div class="ptz card" id="ptz">
+    <div class="pad">
+      <button data-x="-1" data-y="1">↖</button><button data-x="0" data-y="1">↑</button><button data-x="1" data-y="1">↗</button>
+      <button data-x="-1" data-y="0">←</button><button class="stop" title="გაჩერება">■</button><button data-x="1" data-y="0">→</button>
+      <button data-x="-1" data-y="-1">↙</button><button data-x="0" data-y="-1">↓</button><button data-x="1" data-y="-1">↘</button>
+    </div>
+    <div class="zoom"><button data-z="1">＋ ზუმი</button><button data-z="-1">－ ზუმი</button></div>
+    <label>სიჩქარე <input type="range" id="spd" min="0.1" max="1" step="0.1" value="0.5"></label>
+    <div class="presets">
+      <select id="pre"><option value="">პრესეტები…</option></select>
+      <button id="go" class="btn">გადასვლა</button>
+      {% if user.role == 'admin' %}<button id="save" class="btn" title="მიმდინარე პოზიციის შენახვა არჩეულ პრესეტზე, ან ახალზე">შენახვა</button>{% endif %}
+    </div>
+    <p class="muted small">ღილაკს დააჭირეთ და გეჭიროთ · კლავიატურა: ისრები, + / −</p>
+    <div id="ptzmsg" class="small"></div>
+  </div>
+  {% endif %}
+</div>
+<script>mountPlayer(document.getElementById('p'), {{ cam.id|tojson }});</script>
+{% if can_ptz %}
+<script>
+(() => {
+  const CAM = {{ cam.id|tojson }}, msg = document.getElementById('ptzmsg'), spd = document.getElementById('spd');
+  let timer = null, cur = null;
+  const post = (path, data) => {
+    const fd = new FormData(); Object.entries(data || {}).forEach(([k, v]) => fd.append(k, v));
+    return fetch(`/ptz/${CAM}/${path}`, {method: 'POST', body: fd}).then(r => r.json()).then(j => {
+      msg.textContent = j.ok ? '' : ('შეცდომა: ' + j.error); return j; }).catch(e => { msg.textContent = 'კავშირის შეცდომა'; });
+  };
+  // while held: repeat the move every 0.5 s (the server stops the camera itself 1.6 s after the last one)
+  function start(x, y, z) {
+    stop(false); const s = +spd.value; cur = {x: x * s, y: y * s, z: z * s};
+    post('move', cur); timer = setInterval(() => post('move', cur), 500);
+  }
+  function stop(send = true) { if (timer) { clearInterval(timer); timer = null; } if (cur && send) post('stop'); cur = null; }
+  document.querySelectorAll('#ptz [data-x],#ptz [data-z]').forEach(b => {
+    const go = e => { e.preventDefault(); b.setPointerCapture && e.pointerId !== undefined && b.setPointerCapture(e.pointerId);
+      start(+(b.dataset.x || 0), +(b.dataset.y || 0), +(b.dataset.z || 0)); };
+    b.addEventListener('pointerdown', go);
+    ['pointerup', 'pointercancel', 'lostpointercapture'].forEach(ev => b.addEventListener(ev, () => stop()));
+  });
+  document.querySelector('#ptz .stop').onclick = () => { stop(false); post('stop'); };
+  window.addEventListener('blur', () => stop());
+  const KEYS = {ArrowLeft: [-1, 0, 0], ArrowRight: [1, 0, 0], ArrowUp: [0, 1, 0], ArrowDown: [0, -1, 0], '+': [0, 0, 1], '=': [0, 0, 1], '-': [0, 0, -1]};
+  let held = null;
+  document.addEventListener('keydown', e => { const k = KEYS[e.key]; if (!k || e.target.tagName === 'INPUT' && e.target.type !== 'range') return;
+    e.preventDefault(); if (held === e.key) return; held = e.key; start(...k); });
+  document.addEventListener('keyup', e => { if (e.key === held) { held = null; stop(); } });
+  const pre = document.getElementById('pre');
+  function loadPresets() {
+    fetch(`/ptz/${CAM}/presets`).then(r => r.json()).then(j => {
+      if (!j.ok) { msg.textContent = 'პრესეტები: ' + j.error; return; }
+      pre.innerHTML = '<option value="">პრესეტები…</option>' + j.presets.map(p => `<option value="${p.token}">${p.name.replace(/</g, '&lt;')}</option>`).join('');
+    });
+  }
+  loadPresets();
+  document.getElementById('go').onclick = () => pre.value && post('goto', {token: pre.value});
+  const save = document.getElementById('save');
+  if (save) save.onclick = () => {
+    const name = prompt('პრესეტის სახელი', pre.selectedOptions[0] && pre.value ? pre.selectedOptions[0].text : '');
+    if (name) post('preset', {name, token: pre.value}).then(j => j && j.ok && loadPresets());
+  };
+})();
+</script>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,63 @@
+{% extends "base.html" %}{% block title %}შენახვა — NVR{% endblock %}{% block body %}
+<form method="post" class="card" id="sf">
+  <h2>ლოკალური ჩაწერა</h2>
+  <p class="muted">დისკი: {{ du.used|gb }} / {{ du.total|gb }} (თავისუფალი {{ du.free|gb }}) · ჩანაწერები: {{ st.local_bytes|gb }}</p>
+  <div class="cols">
+    <label>შენახვის ვადა (დღე)<input name="retention_days" type="number" min="1" value="{{ s.retention_days }}"></label>
+    <label>მინ. თავისუფალი დისკი (%)<input name="min_free_pct" type="number" min="3" max="50" value="{{ s.min_free_pct }}"></label>
+    <label>ფაილის ხანგრძლივობა (წთ)<input name="segment_minutes" type="number" min="1" max="60" value="{{ s.segment_minutes }}"></label>
+  </div>
+  <h2>დისტანციური შენახვა</h2>
+  <label>სად<select name="offload_target" id="tgt">
+    <option value="none" {% if s.offload_target == 'none' %}selected{% endif %}>გამორთული — მხოლოდ ლოკალურად</option>
+    <option value="gcs" {% if s.offload_target == 'gcs' %}selected{% endif %}>Google Cloud Storage (gcloud bucket)</option>
+    <option value="sftp" {% if s.offload_target == 'sftp' %}selected{% endif %}>SSH/SFTP მანქანა ქსელში</option>
+  </select></label>
+  <div class="t gcs">
+    <div class="cols">
+      <label>Bucket<input name="gcs_bucket" value="{{ s.gcs_bucket }}" placeholder="my-nvr-bucket"></label>
+      <label>საქაღალდე bucket-ში<input name="gcs_prefix" value="{{ s.gcs_prefix }}"></label>
+    </div>
+    <label>Service account JSON გასაღები {% if gcs_key %}<span class="tag ok">ატვირთულია</span>{% endif %}
+      <textarea name="gcs_key_json" rows="4" placeholder="{{ 'შესაცვლელად ჩასვით ახალი' if gcs_key else 'ჩასვით JSON ფაილის შიგთავსი' }}"></textarea></label>
+    <p class="hint">gcloud-ით: <code>gcloud iam service-accounts create nvr-uploader</code> → bucket-ზე როლი <code>Storage Object Admin</code> → <code>gcloud iam service-accounts keys create key.json --iam-account=…</code></p>
+  </div>
+  <div class="t sftp">
+    <div class="cols">
+      <label>ჰოსტი<input name="sftp_host" value="{{ s.sftp_host }}" placeholder="192.168.1.36"></label>
+      <label>პორტი<input name="sftp_port" value="{{ s.sftp_port }}"></label>
+      <label>მომხმარებელი<input name="sftp_user" value="{{ s.sftp_user }}"></label>
+      <label>საქაღალდე<input name="sftp_path" value="{{ s.sftp_path }}" placeholder="/mnt/storage/nvr"></label>
+    </div>
+    {% if sftp_pub %}<p class="hint">ეს გასაღები ჩაამატეთ იმ მანქანაზე <code>~/.ssh/authorized_keys</code>-ში:</p><pre class="mono small">{{ sftp_pub }}</pre>
+    {% else %}<p class="hint">შენახვის შემდეგ აქ გამოჩნდება SSH გასაღები, რომელიც დისტანციურ მანქანაზე უნდა ჩაამატოთ.</p>{% endif %}
+  </div>
+  <div class="t gcs sftp">
+    <div class="cols">
+      <label>რეჟიმი<select name="offload_mode">
+        <option value="copy" {% if s.offload_mode == 'copy' %}selected{% endif %}>ასლი (ლოკალურიც რჩება ვადამდე)</option>
+        <option value="move" {% if s.offload_mode == 'move' %}selected{% endif %}>გადატანა (ლოკალურად იშლება)</option></select></label>
+      <label>ყოველ (წთ)<input name="offload_interval_min" type="number" min="2" value="{{ s.offload_interval_min }}"></label>
+      <label>დისტანციურად ვადა (დღე, 0=სამუდამოდ)<input name="remote_retention_days" type="number" min="0" value="{{ s.remote_retention_days }}"></label>
+      <label>სიჩქარის ლიმიტი<input name="bwlimit" value="{{ s.bwlimit }}" placeholder="მაგ. 2M (ცარიელი=ულიმიტო)"></label>
+    </div>
+  </div>
+  <div class="row"><button type="button" class="btn" id="test">კავშირის ტესტი</button><span class="sp"></span><button class="btn primary">შენახვა</button></div>
+  <div id="out"></div>
+</form>
+<div class="card">
+  <div class="row"><h3>ბოლო გაშვება: {{ st.last_run|ts }}</h3><span class="sp"></span>
+    <form method="post" action="/admin/storage/run" class="inline"><button class="btn">ახლავე გაშვება</button></form></div>
+  <pre class="{{ 'ok' if st.ok else ('bad' if st.ok == False else '') }}">{{ st.msg }}</pre>
+</div>
+<script>
+const tgt = document.getElementById('tgt');
+function upd() { document.querySelectorAll('.t').forEach(e => e.style.display = e.classList.contains(tgt.value) ? '' : 'none'); }
+tgt.onchange = upd; upd();
+document.getElementById('test').onclick = async () => {
+  const out = document.getElementById('out'); out.innerHTML = '<p class="muted">ჯერ შეინახეთ, შემდეგ ტესტი. ვამოწმებ…</p>';
+  const r = await (await fetch('/admin/storage/test', {method: 'POST'})).json();
+  out.innerHTML = `<pre class="${r.ok ? 'ok' : 'bad'}">${r.out.replace(/</g, '&lt;')}</pre>`;
+};
+</script>
+{% endblock %}

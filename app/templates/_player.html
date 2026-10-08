@@ -1,0 +1,22 @@
+<script type="module" src="/static/player/video-stream.js?v=3"></script>
+<script>
+// Each tile shows the camera's last recorded frame as background while the live stream connects,
+// or whenever it is interrupted; the <video> covers it once frames arrive.
+function setPoster(el, cam) {
+  const img = new Image();
+  img.onload = () => { el.style.backgroundImage = `url(${img.src})`; };
+  img.src = `/poster/${cam}.jpg?t=${Date.now()}`;
+}
+function mountPlayer(el, src) {
+  const cam = src.replace(/__sub$/, '');
+  setPoster(el, cam);
+  setInterval(() => setPoster(el, cam), 60000);
+  customElements.whenDefined('video-stream').then(() => {
+    const v = document.createElement('video-stream');
+    v.mode = 'mse';
+    v.background = false;
+    v.src = new URL('/api/ws?src=' + encodeURIComponent(src), location.href);
+    el.appendChild(v);
+  });
+}
+</script>

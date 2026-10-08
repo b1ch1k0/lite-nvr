@@ -1,0 +1,66 @@
+{% extends "base.html" %}{% block title %}კამერა — NVR{% endblock %}{% block body %}
+<form method="post" action="/admin/cameras/save" class="card" id="f">
+  <h2>{{ 'ახალი კამერა' if new else 'კამერა: ' ~ c.name }}</h2>
+  <input type="hidden" name="id" value="{{ c.id or '' }}">
+  <label>მწარმოებელი / ტიპი
+    <select name="vendor" id="vendor">
+      {% for k, v in vendors.items() %}<option value="{{ k }}" {% if k == c.vendor %}selected{% endif %}>{{ v.label }}</option>{% endfor %}
+    </select></label>
+  <p class="hint" id="hint"></p>
+  <label>სახელი<input name="name" value="{{ c.name or '' }}" placeholder="მაგ. ეზო, შესასვლელი"></label>
+  <div class="cols">
+    <label class="tpl">IP მისამართი<input name="host" value="{{ c.host or '' }}" placeholder="192.168.1.64"></label>
+    <label class="tpl">პორტი<input name="port" id="port" value="{{ c.port or '' }}"></label>
+    <label class="tpl">არხი (NVR/DVR)<input name="channel" value="{{ c.channel or 1 }}"></label>
+  </div>
+  <div class="cols">
+    <label>მომხმარებელი<input name="username" value="{{ c.username or '' }}" autocomplete="off"></label>
+    <label>პაროლი<input name="password" type="password" autocomplete="new-password" placeholder="{{ '' if new else 'უცვლელი დატოვეთ ცარიელი' }}"></label>
+  </div>
+  <label class="url">ძირითადი ნაკადი (ჩასაწერად)<input name="main_url" value="{{ c.main_url or '' }}" placeholder="rtsp://192.168.1.10:554/..."></label>
+  <label class="url">დამხმარე ნაკადი (ცოცხალი ბადისთვის, არასავალდებულო)<input name="sub_url" value="{{ c.sub_url or '' }}"></label>
+  <input type="hidden" name="onvif_port" value="{{ c.onvif_port or '' }}">
+  <div class="checks">
+    <label><input type="checkbox" name="enabled" {% if c.enabled %}checked{% endif %}> ჩართული</label>
+    <label><input type="checkbox" name="audio" {% if c.audio %}checked{% endif %}> ხმის ჩაწერა</label>
+    <label><input type="checkbox" name="ptz" {% if c.ptz %}checked{% endif %}> PTZ მართვა (ONVIF ტრიალი/ზუმი)</label>
+  </div>
+  <label>ONVIF პორტი (PTZ-სთვის)<input name="onvif_port_visible" value="{{ c.onvif_port or '' }}" oninput="this.form.onvif_port.value=this.value"></label>
+  <div class="cols">
+    <label>ჩაწერა<select name="rec_mode" id="rec_mode">
+      {% for k, v in modes.items() %}<option value="{{ k }}" {% if k == (c.rec_mode or 'continuous') %}selected{% endif %}>{{ v }}</option>{% endfor %}</select></label>
+    <label class="mot">მოძრაობის მგრძნობელობა<select name="motion_sens">
+      {% for k, v in [(1, 'დაბალი'), (2, 'საშუალო'), (3, 'მაღალი')] %}<option value="{{ k }}" {% if k == (c.motion_sens or 2) %}selected{% endif %}>{{ v }}</option>{% endfor %}</select></label>
+    <label class="mot">მინ. შეცვლილი ფართი (% კადრის)<input name="motion_area" value="{{ c.motion_area or 0.5 }}"></label>
+  </div>
+  <div class="checks"><label><input type="checkbox" name="motion" id="motion" {% if c.motion or c.rec_mode == 'motion' %}checked{% endif %}> მოძრაობის დეტექცია (მოვლენები + ფოტო)</label></div>
+  <p class="muted small">მცირე ფართი (0.2–0.5%) = შორს მყოფი ადამიანიც დაფიქსირდება; დიდი (2–5%) = მხოლოდ ახლო/დიდი მოძრაობა, ნაკლები ცრუ განგაში (ხეები, წვიმა).</p>
+  <div class="row"><button type="button" class="btn" id="test">კავშირის ტესტი</button><span class="sp"></span>
+    <a class="btn" href="/admin/cameras">გაუქმება</a><button class="btn primary">შენახვა</button></div>
+  <div id="out"></div>
+</form>
+<script>
+const V = {{ vendors|tojson }}, f = document.getElementById('f'), sel = document.getElementById('vendor');
+function upd(first) {
+  const v = V[sel.value], tpl = !!v.main;
+  document.getElementById('hint').textContent = v.hint || '';
+  f.querySelectorAll('.tpl').forEach(e => e.style.display = tpl ? '' : 'none');
+  f.querySelectorAll('.url').forEach(e => e.style.display = tpl ? 'none' : '');
+  if (!first || !f.port.value) f.port.value = v.port;
+  if (!first || !f.onvif_port.value) f.onvif_port.value = v.onvif_port;
+  if (f.onvif_port_visible) f.onvif_port_visible.value = f.onvif_port.value;
+}
+sel.onchange = () => upd(false); upd(true);
+const rm = document.getElementById('rec_mode'), mo = document.getElementById('motion');
+function updm() { if (rm.value === 'motion') { mo.checked = true; mo.disabled = true; } else mo.disabled = false;
+  f.querySelectorAll('.mot').forEach(e => e.style.opacity = mo.checked ? 1 : .5); }
+rm.onchange = updm; mo.onchange = updm; updm();
+f.addEventListener('submit', () => { mo.disabled = false; });
+document.getElementById('test').onclick = async () => {
+  const out = document.getElementById('out'); out.innerHTML = '<p class="muted">მოწმდება… (15წმ-მდე)</p>';
+  const r = await (await fetch('/admin/cameras/test', {method: 'POST', body: new FormData(f)})).json();
+  out.innerHTML = r.results.map(x => `<div class="${x.ok ? 'msg' : 'err'}"><b>${x.kind || ''}</b> <span class="mono small">${esc(x.url)}</span><br>${esc(x.ok ? x.info : x.error)}</div>`).join('') || '<div class="err">მისამართი ვერ შედგა</div>';
+};
+function esc(s) { return String(s || '').replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c])); }
+</script>
+{% endblock %}

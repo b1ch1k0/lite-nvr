@@ -1,0 +1,26 @@
+name: Release
+on:
+  push:
+    tags: ["v*"]
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check version matches tag
+        run: test "v$(sed -n 's/^__version__ = "\(.*\)"/\1/p' app/__init__.py)" = "${GITHUB_REF_NAME}"
+      - name: Release tarball
+        run: ./tools/make-release.sh
+      - name: RPM (Rocky Linux 9, x86_64)
+        run: |
+          docker run --rm -v "$PWD":/src -w /src rockylinux:9 bash -c \
+            "dnf -y -q install rpm-build python3.11 python3.11-pip tar && ./packaging/build-rpm.sh"
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/nvr.tar.gz
+            dist/nvr.tar.gz.sha256
+            dist/*.rpm
+          generate_release_notes: true

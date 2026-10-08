@@ -1,0 +1,14 @@
+#!/bin/sh
+# Starts the NVR web app. Works with both install layouts:
+#   setup.sh  -> /opt/nvr/venv (virtualenv)
+#   RPM       -> /opt/nvr/lib  (vendored site-packages for the system python3.11)
+set -e
+cd /opt/nvr
+if [ -x /opt/nvr/venv/bin/python ]; then
+  PY=/opt/nvr/venv/bin/python
+else
+  PY=$(cat /opt/nvr/python 2>/dev/null || echo python3)
+  export PYTHONPATH=/opt/nvr/lib
+fi
+exec "$PY" -m uvicorn app.main:app --host 127.0.0.1 --port 8090 --workers 1 \
+  --proxy-headers --forwarded-allow-ips 127.0.0.1 --no-access-log

@@ -1,0 +1,20 @@
+{% extends "base.html" %}{% block body %}
+<form method="post" class="card narrow">
+  <h2>პაროლის შეცვლა</h2>
+  <p class="muted">როლი: {{ user.role }}</p>
+  <label>ძველი პაროლი<input name="old" type="password" required></label>
+  <label>ახალი პაროლი (მინ. 8)<input name="new" type="password" minlength="8" required></label>
+  <button>შეცვლა</button>
+</form>
+{% if user.role == 'admin' %}
+<div class="card narrow">
+  <h2>შესვლის დამალული მისამართი</h2>
+  <p class="muted small">შესვლის გვერდი მხოლოდ ამ მისამართზე იხსნება. ყველა სხვა მისამართი სტუმრებს 404-ს უბრუნებს.
+    შეინახეთ სანიშნეში და გაუზიარეთ მხოლოდ მომხმარებლებს.</p>
+  <pre class="mono" id="gu"></pre>
+  <script>document.getElementById('gu').textContent = location.origin + '/s/' + {{ gate|tojson }};</script>
+  <form method="post" action="/account/gate" onsubmit="return confirm('ძველი მისამართი აღარ იმუშავებს. გავაგრძელოთ?')">
+    <button class="btn">ახალი მისამართის შექმნა</button></form>
+</div>
+{% endif %}
+{% endblock %}

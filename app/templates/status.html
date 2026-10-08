@@ -1,0 +1,20 @@
+{% extends "base.html" %}{% block title %}სტატუსი — NVR{% endblock %}{% block body %}
+<div class="stats">
+  <div class="card"><b>go2rtc</b><br>{% if go2rtc_ok %}<span class="tag ok">მუშაობს</span>{% else %}<span class="tag bad">არ პასუხობს</span>{% endif %}</div>
+  <div class="card"><b>დატვირთვა</b><br>{{ load|join(' / ') }}</div>
+  <div class="card"><b>მეხსიერება</b><br>{{ mem.MemAvailable }} MB თავისუფალი / {{ mem.MemTotal }} MB</div>
+  <div class="card"><b>დისკი</b><br>{{ du.free|gb }} თავისუფალი / {{ du.total|gb }}</div>
+</div>
+<h3>ჩამწერები და დეტექტორები</h3>
+<table><tr><th>კამერა</th><th>პროცესი</th><th>მდგომარეობა</th><th>გადატვირთვები</th><th>ბოლო ლოგი</th></tr>
+{% for c in cams %}{% for kind, w in [('ჩაწერა', c.rec), ('მოძრაობა', c.det)] %}{% if w %}
+<tr><td>{{ c.name }} <span class="muted">{{ c.id }}</span></td><td>{{ kind }}{% if kind == 'მოძრაობა' %}<br><span class="muted small">ახლა: {{ '%.2f'|format(w.level * 100) }}% · ზღვარი {{ '%.2f'|format(w.area * 100) }}%</span>{% endif %}</td>
+  <td>{{ w.state }} <span class="muted">({{ ((now - w.since) / 60)|int }} წთ)</span></td>
+  <td>{{ w.restarts }}</td>
+  <td><pre class="small">{{ (w.log|list)[-5:]|join('\n') }}</pre></td></tr>{% endif %}{% endfor %}{% endfor %}
+</table>
+<h3>ჟურნალი</h3>
+<table><tr><th>დრო</th><th>მომხმარებელი</th><th>IP</th><th>მოქმედება</th></tr>
+{% for l in logs %}<tr><td class="nowrap">{{ l.ts|ts }}</td><td>{{ l.username }}</td><td>{{ l.ip }}</td><td>{{ l.action }}</td></tr>{% endfor %}
+</table>
+{% endblock %}

@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+dist/
+vendor/
+.venv/
+*.db
+*.db-*
+nvr-admin.txt
+rclone.conf
+gcs-sa.json
+sftp_ed25519*

@@ -1,0 +1,7 @@
+{# per-camera quick switches; posts JSON so the page doesn't reload #}
+<span class="modes" data-cam="{{ c.id }}">
+  <select class="m-rec" title="ჩაწერა">
+    {% for k, v in modes.items() %}<option value="{{ k }}" {% if k == (c.rec_mode or 'continuous') %}selected{% endif %}>{{ v }}</option>{% endfor %}
+  </select>
+  <label class="sw" title="მოძრაობის დეტექცია"><input type="checkbox" class="m-mot" {% if c.motion or c.rec_mode == 'motion' %}checked{% endif %} {% if c.rec_mode == 'motion' %}disabled{% endif %}> მოძრაობა</label>
+</span>

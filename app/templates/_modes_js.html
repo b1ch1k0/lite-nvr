@@ -1,0 +1,15 @@
+<script>
+document.querySelectorAll('.modes').forEach(box => {
+  const rec = box.querySelector('.m-rec'), mot = box.querySelector('.m-mot');
+  async function save() {
+    if (rec.value === 'motion') { mot.checked = true; mot.disabled = true; } else mot.disabled = false;
+    const fd = new FormData(); fd.append('rec_mode', rec.value); fd.append('motion', mot.checked ? '1' : '0');
+    box.classList.add('busy');
+    const r = await fetch('/admin/cameras/' + box.dataset.cam + '/mode', {method: 'POST', body: fd, headers: {Accept: 'application/json'}});
+    box.classList.remove('busy');
+    box.classList.toggle('saved', r.ok); setTimeout(() => box.classList.remove('saved'), 1200);
+    if (!r.ok) alert('ვერ შეინახა');
+  }
+  rec.onchange = save; mot.onchange = save;
+});
+</script>
