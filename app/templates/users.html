@@ -1,15 +1,17 @@
 {% extends "base.html" %}{% block title %}მომხმარებლები — NVR{% endblock %}{% block body %}
 <h2>მომხმარებლები</h2>
-<table>
+<div class="tblwrap"><table>
 <tr><th>სახელი</th><th>როლი</th><th>კამერები</th><th>სტატუსი</th><th></th></tr>
 {% for x in users %}
 <tr><td><b>{{ x.username }}</b></td><td>{{ roles[x.role] }}</td>
   <td>{% if x.role == 'admin' %}<span class="muted">ყველა</span>{% else %}{{ x.cams|join(', ') or '—' }}{% endif %}</td>
-  <td>{% if x.active %}<span class="tag ok">აქტიური</span>{% else %}<span class="tag">დაბლოკილი</span>{% endif %}</td>
+  <td>{% if x.active %}<span class="tag ok">აქტიური</span>{% else %}<span class="tag">დაბლოკილი</span>{% endif %}
+    {% if x.totp_secret %}<span class="tag ok">2FA</span>{% endif %}</td>
   <td class="nowrap"><a class="btn" href="/admin/users/{{ x.id }}">რედაქტირება</a>
+  {% if x.totp_secret %}<form method="post" action="/admin/users/{{ x.id }}/2fa-reset" class="inline" onsubmit="return confirm('{{ x.username }}-ს 2FA გაუუქმდეს? (მოწყობილობის დაკარგვისას)')"><button class="btn">2FA გაუქმება</button></form>{% endif %}
   {% if x.id != user.id %}<form method="post" action="/admin/users/{{ x.id }}/delete" class="inline" onsubmit="return confirm('წავშალოთ {{ x.username }}?')"><button class="btn danger">წაშლა</button></form>{% endif %}</td></tr>
 {% endfor %}
-</table>
+</table></div>
 <form method="post" action="/admin/users/save" class="card">
   <h3>ახალი მომხმარებელი</h3>
   <div class="cols">

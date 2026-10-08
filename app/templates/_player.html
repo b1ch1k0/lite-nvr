@@ -1,22 +1,66 @@
-<script type="module" src="/static/player/video-stream.js?v=3"></script>
+<script type="module" src="/static/player/video-stream.js?v=9"></script>
 <script>
-// Each tile shows the camera's last recorded frame as background while the live stream connects,
-// or whenever it is interrupted; the <video> covers it once frames arrive.
+// Each tile has a poster layer (the camera's last recorded frame) BEHIND the live <video>. The poster is
+// shown only while the stream is connecting or stalled; the moment live frames start advancing it is hidden,
+// so the live picture and the (older) poster — each with its own burnt-in clock — are never visible at once.
 function setPoster(el, cam) {
   const img = new Image();
-  img.onload = () => { el.style.backgroundImage = `url(${img.src})`; };
+  img.onload = () => { if (el._posterEl) el._posterEl.style.backgroundImage = `url(${img.src})`; };
   img.src = `/poster/${cam}.jpg?t=${Date.now()}`;
 }
+function wsUrl(src) { return new URL('/api/ws?src=' + encodeURIComponent(src), location.href); }
+
+// Hide the poster while live frames advance, show it again on stall/disconnect.
+function watchLive(el, v) {
+  const vid = v.video;
+  if (!vid) { setTimeout(() => watchLive(el, v), 150); return; }
+  let last = -1, lastMove = 0;
+  const drop = () => el.classList.remove('live');
+  ['waiting', 'stalled', 'emptied', 'error', 'pause'].forEach(e => vid.addEventListener(e, drop));
+  clearInterval(el._liveTimer);
+  el._liveTimer = setInterval(() => {
+    if (!el._vs || el.classList.contains('paused')) { drop(); return; }
+    const t = vid.currentTime;
+    if (t > 0 && t !== last) { last = t; lastMove = performance.now(); el.classList.add('live'); }
+    else if (performance.now() - lastMove > 1800) drop();
+  }, 400);
+}
+
+// Switch an existing player to another stream (or to none: src = '') while keeping the same <video>
+// element, so a native fullscreen view survives the switch. A paused player holds no connection at all.
+function setStream(el, src) {
+  const v = el._vs;
+  if (!v) { el._want = src; return; }
+  if (v._cur === src) return;
+  el.classList.remove('live');
+  v.ondisconnect();
+  v._cur = src;
+  el.classList.toggle('paused', !src);
+  if (src) v.src = wsUrl(src); else v.wsURL = '';
+}
+
 function mountPlayer(el, src) {
   const cam = src.replace(/__sub$/, '');
-  setPoster(el, cam);
-  setInterval(() => setPoster(el, cam), 60000);
+  if (el._vs) return setStream(el, src);
+  if (!el._posterEl) {
+    const pr = document.createElement('div');
+    pr.className = 'poster';
+    el.insertBefore(pr, el.firstChild);
+    el._posterEl = pr;
+    setPoster(el, cam);
+    el._poster = setInterval(() => setPoster(el, cam), 60000);
+  }
   customElements.whenDefined('video-stream').then(() => {
     const v = document.createElement('video-stream');
     v.mode = 'mse';
     v.background = false;
-    v.src = new URL('/api/ws?src=' + encodeURIComponent(src), location.href);
+    v._cur = src;
+    v.src = wsUrl(src);
     el.appendChild(v);
+    el._vs = v;
+    watchLive(el, v);
+    if (el._want !== undefined) { const w = el._want; delete el._want; setStream(el, w); }
+    if (v.video) el.dispatchEvent(new CustomEvent('player-ready', {detail: v.video}));
   });
 }
 </script>

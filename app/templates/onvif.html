@@ -1,13 +1,25 @@
 {% extends "base.html" %}{% block title %}ONVIF — NVR{% endblock %}{% block body %}
+<form class="card" id="df">
+  <h2>0. ავტომატური დადგენა</h2>
+  <p class="muted">შეიყვანეთ კამერის IP და მონაცემები — სისტემა თავად შეამოწმებს პოპულარულ პორტებს (ONVIF 80/2020/8000/8899,
+    RTSP 554, Hikvision, Dahua, Tapo, Reolink…) და გეტყვის რა მოიძებნა.</p>
+  <div class="cols">
+    <label>IP<input name="host" required></label>
+    <label>მომხმარებელი<input name="username" autocomplete="off"></label>
+    <label>პაროლი<input name="password" type="password" autocomplete="new-password"></label>
+  </div>
+  <button class="btn primary">დადგენა</button>
+  <div id="dout"></div>
+</form>
 <div class="card">
-  <h2>1. ONVIF კამერების ძებნა</h2>
+  <h2>1. ONVIF კამერების ძებნა (ქსელში)</h2>
   <p class="muted">ლოკალურ სეგმენტზე ძებნა multicast-ით ხდება. სხვა ქსელისთვის (მაგ. 192.168.100.0/24) ჩაწერეთ ქსელი — თითოეულ მისამართს ცალკე ვკითხავთ.</p>
   <div class="row"><input id="subnets" placeholder="192.168.100.0/24, 10.0.0.0/24 (არასავალდებულო)">
     <button class="btn primary" id="scan">ძებნა</button></div>
   <div id="found"></div>
 </div>
 <form class="card" id="pf">
-  <h2>2. დაკავშირება ONVIF-ით</h2>
+  <h2>2. დაკავშირება ONVIF-ით (ხელით)</h2>
   <div class="cols">
     <label>IP<input name="host" required></label>
     <label>ONVIF პორტი<input name="port" value="80" required></label>
@@ -21,24 +33,66 @@
 <script>
 const $ = s => document.querySelector(s);
 function esc(s) { return String(s ?? '').replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c])); }
+
+// ---- section 0: auto-detect
+$('#df').onsubmit = async e => {
+  e.preventDefault();
+  $('#dout').innerHTML = '<p class="muted">ვამოწმებ პორტებს და ვენდორებს… (5-15 წმ)</p>';
+  const r = await (await fetch('/admin/onvif/detect', {method: 'POST', body: new FormData($('#df'))})).json();
+  if (!r.ok) { $('#dout').innerHTML = `<div class="err">${esc(r.error)}</div>`; return; }
+  let h = '';
+  h += '<div class="msg">ღია პორტები: ' + (r.open.length ? r.open.map(p => `<span class="tag">${p.port} ${esc(p.label)}</span>`).join(' ') : 'ვერცერთი') + '</div>';
+  if (r.onvif) {
+    const i = r.onvif.info || {};
+    h += `<p><b>✓ ONVIF ნაპოვნია</b> (პორტი ${r.onvif.port}): ${esc(i.Manufacturer || '')} ${esc(i.Model || '')}.
+      <button class="btn primary" id="useonvif">ONVIF-ით დამატება →</button></p>`;
+  }
+  if (r.rtsp && r.rtsp.length) {
+    h += '<p><b>✓ RTSP ნაკადები ნაპოვნია:</b></p><table><tr><th>ტიპი</th><th>ნაკადი</th><th>მისამართი</th><th></th></tr>' +
+      r.rtsp.map((d, k) => `<tr><td>${esc(d.label)}</td><td class="small">${esc(d.info)}</td><td class="mono small">${esc(d.main)}</td>
+        <td><button class="btn primary" data-add="${k}">+ დამატება</button></td></tr>`).join('') + '</table>';
+  }
+  if (!r.onvif && !(r.rtsp && r.rtsp.length)) {
+    h += '<p class="muted">ავტომატურად ვერ დადგინდა. სცადეთ ქვემოთ ხელით, ან შეამოწმეთ სახელი/პაროლი.</p>';
+  }
+  $('#dout').innerHTML = h;
+  const host = $('#df').host.value, user = $('#df').username.value, pass = $('#df').password.value;
+  if (r.onvif) $('#useonvif').onclick = () => {
+    const f = $('#pf'); f.host.value = host; f.port.value = r.onvif.port;
+    f.username.value = user; f.password.value = pass;
+    f.scrollIntoView({behavior: 'smooth'}); f.requestSubmit();
+  };
+  (r.rtsp || []).forEach((d, k) => {
+    const b = $(`[data-add="${k}"]`); if (!b) return;
+    b.onclick = async () => {
+      b.disabled = true;
+      const fd = new FormData();
+      fd.append('host', host); fd.append('vendor', d.vendor); fd.append('port', d.port);
+      fd.append('username', user); fd.append('password', pass); fd.append('name', d.label + ' ' + host);
+      const x = await (await fetch('/admin/detect/add', {method: 'POST', body: fd})).json();
+      if (x.ok) location = '/admin/cameras?msg=' + encodeURIComponent('დაემატა ' + x.id);
+      else { b.disabled = false; alert(x.error || 'ვერ დაემატა'); }
+    };
+  });
+};
+
+// ---- section 1: WS-Discovery scan
 $('#scan').onclick = async () => {
   $('#found').innerHTML = '<p class="muted">ვეძებ… (3-5 წმ)</p>';
   const fd = new FormData(); fd.append('subnets', $('#subnets').value);
   const r = await (await fetch('/admin/onvif/scan', {method: 'POST', body: fd})).json();
   if (!r.ok) { $('#found').innerHTML = `<div class="err">${esc(r.error)}</div>`; return; }
-  if (!r.found.length) { $('#found').innerHTML = '<p class="muted">ვერაფერი მოიძებნა. ზოგი კამერა (მაგ. Tapo) WS-Discovery-ზე არ პასუხობს — შეიყვანეთ IP ხელით მე-2 ნაწილში.</p>'; return; }
+  if (!r.found.length) { $('#found').innerHTML = '<p class="muted">ვერაფერი მოიძებნა. ზოგი კამერა (მაგ. Tapo) WS-Discovery-ზე არ პასუხობს — გამოიყენეთ ზედა „ავტომატური დადგენა“ ან ქვემოთ ხელით.</p>'; return; }
   $('#found').innerHTML = '<table><tr><th>IP</th><th>პორტი</th><th>სახელი</th><th>მოდელი</th><th></th></tr>' +
     r.found.map(d => `<tr><td>${esc(d.ip)}</td><td>${d.port}</td><td>${esc(d.name)}</td><td>${esc(d.hardware)}</td><td>${d.added ? '<span class="tag ok">დამატებულია</span>' : `<button class="btn" onclick="pick('${esc(d.ip)}',${d.port})">არჩევა</button>`}</td></tr>`).join('') + '</table>';
 };
 function pick(ip, port) { const f = $('#pf'); f.host.value = ip; f.port.value = port; f.username.focus(); }
+
+// ---- section 2: ONVIF probe + add
 let last = null;
-$('#pf').onsubmit = async e => {
-  e.preventDefault(); $('#pout').innerHTML = '<p class="muted">ვუკავშირდები…</p>';
-  const r = await (await fetch('/admin/onvif/probe', {method: 'POST', body: new FormData($('#pf'))})).json();
-  if (!r.ok) { $('#pout').innerHTML = `<div class="err">${esc(r.error)}</div>`; return; }
+function renderProbe(r) {
   last = r; const i = r.info;
-  // MJPEG/JPEG profiles can't be played live and break some cameras (Tapo stream8) — never pick them
-  const ok = p => p.uri && !/jpe?g/i.test(p.encoding);
+  const ok = p => p.uri && !/jpe?g/i.test(p.encoding);   // MJPEG/JPEG profiles break live playback — never pick them
   const good = r.profiles.map((p, k) => [p, k]).filter(([p]) => ok(p));
   const mainK = good.length ? good[0][1] : -1;
   const subK = good.length > 1 ? good[good.length - 1][1] : -1;
@@ -50,6 +104,12 @@ $('#pf').onsubmit = async e => {
     <tr><td colspan="6"><label><input type="radio" name="sub" value="-1" ${subK < 0 ? 'checked' : ''}> დამხმარე ნაკადის გარეშე</label></td></tr></table>
     <div class="row"><input id="cname" placeholder="კამერის სახელი" value="${esc(i.Model)}"><button type="button" class="btn primary" id="add">+ NVR-ში დამატება</button></div>`;
   $('#add').onclick = add;
+}
+$('#pf').onsubmit = async e => {
+  e.preventDefault(); $('#pout').innerHTML = '<p class="muted">ვუკავშირდები…</p>';
+  const r = await (await fetch('/admin/onvif/probe', {method: 'POST', body: new FormData($('#pf'))})).json();
+  if (!r.ok) { $('#pout').innerHTML = `<div class="err">${esc(r.error)}</div>`; return; }
+  renderProbe(r);
 };
 async function add() {
   const f = $('#pf'), mc = document.querySelector('[name=main]:checked');

@@ -36,6 +36,11 @@ CAM_COLUMNS = [
 ]
 REC_MODES = {"off": "გამორთული", "continuous": "24/7 უწყვეტი", "motion": "მხოლოდ მოძრაობისას"}
 
+# column, type — added to users when missing (upgrade path for existing installs)
+USER_COLUMNS = [
+    ("totp_secret", "TEXT"),   # base32 TOTP secret; set once two-factor is confirmed, else NULL/empty
+]
+
 DEFAULTS = {
     "retention_days": "7", "min_free_pct": "10", "segment_minutes": "5",
     "offload_target": "none", "offload_mode": "copy", "offload_interval_min": "10",
@@ -63,6 +68,10 @@ def init():
     for col, typ in CAM_COLUMNS:
         if col not in have:
             c.execute(f"ALTER TABLE cameras ADD COLUMN {col} {typ}")
+    haveu = {r["name"] for r in c.execute("PRAGMA table_info(users)")}
+    for col, typ in USER_COLUMNS:
+        if col not in haveu:
+            c.execute(f"ALTER TABLE users ADD COLUMN {col} {typ}")
     c.execute("UPDATE cameras SET rec_mode = CASE WHEN record=1 THEN 'continuous' ELSE 'off' END "
               "WHERE rec_mode IS NULL OR rec_mode NOT IN ('off','continuous','motion')")
     # events left open by a crash/restart

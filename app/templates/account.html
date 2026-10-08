@@ -6,6 +6,26 @@
   <label>ახალი პაროლი (მინ. 8)<input name="new" type="password" minlength="8" required></label>
   <button>შეცვლა</button>
 </form>
+<div class="card narrow">
+  <h2>ორფაქტორიანი ავტორიზაცია (2FA)</h2>
+  {% if totp_on %}
+    <p class="small"><span class="tag ok">ჩართულია</span> შესვლისას პაროლის გარდა აპლიკაციის კოდიც იქნება საჭირო.</p>
+    <form method="post" action="/account/2fa/disable">
+      <label>დასადასტურებლად შეიყვანეთ პაროლი<input name="password" type="password" required></label>
+      <button class="btn danger">გამორთვა</button></form>
+  {% elif totp_pending %}
+    <p class="small">1. დაასკანერეთ QR კოდი აპლიკაციით (Google Authenticator, Authy, Microsoft Authenticator…).</p>
+    {% if qr_svg %}<div style="background:#fff;display:inline-block;padding:8px;border-radius:4px">{{ qr_svg|safe }}</div>{% endif %}
+    <p class="small muted">ან შეიყვანეთ გასაღები ხელით:<br><span class="mono" style="letter-spacing:.15em;word-break:break-all">{{ totp_secret }}</span></p>
+    <form method="post" action="/account/2fa/confirm">
+      <label>2. შეიყვანეთ აპლიკაციის 6-ნიშნა კოდი<input name="code" inputmode="numeric" pattern="[0-9 ]*" maxlength="9" autocomplete="one-time-code" required></label>
+      <button class="btn primary">დადასტურება და ჩართვა</button></form>
+    <form method="post" action="/account/2fa/cancel" style="margin-top:6px"><button class="link">გაუქმება</button></form>
+  {% else %}
+    <p class="small muted">დამატებითი დაცვა: შესვლისას ტელეფონის აპლიკაციის ერთჯერადი კოდი. გასაღები მხოლოდ ამ მოწყობილობაზე ინახება.</p>
+    <form method="post" action="/account/2fa/start"><button class="btn primary">ჩართვა</button></form>
+  {% endif %}
+</div>
 {% if user.role == 'admin' %}
 <div class="card narrow">
   <h2>შესვლის დამალული მისამართი</h2>
@@ -15,6 +35,13 @@
   <script>document.getElementById('gu').textContent = location.origin + '/s/' + {{ gate|tojson }};</script>
   <form method="post" action="/account/gate" onsubmit="return confirm('ძველი მისამართი აღარ იმუშავებს. გავაგრძელოთ?')">
     <button class="btn">ახალი მისამართის შექმნა</button></form>
+  <hr>
+  <p class="small">{% if open_login %}შესვლის გვერდი <b>IP მისამართზეც</b> იხსნება: <span class="mono" id="ou"></span>
+    <script>document.getElementById('ou').textContent = location.origin + '/';</script>
+  {% else %}შესვლის გვერდი IP მისამართზე (<span class="mono">/</span>) არ ჩანს.{% endif %}</p>
+  <form method="post" action="/account/open-login">
+    <input type="hidden" name="on" value="{{ '0' if open_login else '1' }}">
+    <button class="btn">{{ 'IP-ზე შესვლის გამორთვა' if open_login else 'შესვლა პირდაპირ IP მისამართზე' }}</button></form>
 </div>
 {% endif %}
 {% endblock %}

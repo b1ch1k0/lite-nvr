@@ -1,11 +1,74 @@
-{% extends "base.html" %}{% block title %}NVR{% endblock %}{% block body %}
-<form class="card login" id="lf" autocomplete="on">
-  <h2>● NVR — შესვლა</h2>
-  <label>მომხმარებელი<input name="username" autocomplete="username" required autofocus></label>
-  <label>პაროლი<input name="password" type="password" autocomplete="current-password" required></label>
-  <button id="btn">შესვლა</button>
-  <div id="m" class="small"></div>
-</form>
+<!doctype html>
+<html lang="ka"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>NVR // ACCESS</title>
+<style>
+:root{--c:#21f3d0;--c2:#ff2bd6;--dim:#0e6b5f;--bg:#03070a;--txt:#b8fff2;--err:#ff4d6d}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;background:var(--bg);color:var(--txt);
+  font:15px/1.5 ui-monospace,"JetBrains Mono","Fira Code",Menlo,Consolas,monospace;overflow:hidden}
+#rain{position:fixed;inset:0;width:100%;height:100%;opacity:.55}
+body:before{content:"";position:fixed;inset:0;pointer-events:none;z-index:3;
+  background:repeating-linear-gradient(0deg,rgba(0,0,0,.28) 0 1px,transparent 1px 3px)}
+body:after{content:"";position:fixed;inset:0;pointer-events:none;z-index:3;
+  background:radial-gradient(ellipse at center,transparent 45%,rgba(0,0,0,.85) 100%)}
+.wrap{position:relative;z-index:2;min-height:100%;display:flex;align-items:center;justify-content:center;padding:16px}
+.panel{width:100%;max-width:440px;border:1px solid var(--c);background:rgba(2,14,16,.82);
+  box-shadow:0 0 24px rgba(33,243,208,.35),inset 0 0 30px rgba(33,243,208,.08);padding:22px 22px 18px;
+  position:relative;backdrop-filter:blur(2px);animation:boot .6s ease-out}
+.panel:before,.panel:after{content:"";position:absolute;width:18px;height:18px;border:2px solid var(--c2)}
+.panel:before{top:-6px;left:-6px;border-right:0;border-bottom:0}
+.panel:after{bottom:-6px;right:-6px;border-left:0;border-top:0}
+@keyframes boot{from{opacity:0;transform:scaleY(.02)}60%{opacity:1;transform:scaleY(1.03)}to{transform:none}}
+.hdr{display:flex;justify-content:space-between;font-size:11px;color:var(--dim);letter-spacing:.12em;margin-bottom:10px}
+h1{margin:4px 0 14px;font-size:30px;letter-spacing:.25em;color:var(--c);text-shadow:0 0 8px var(--c);position:relative}
+h1 span{position:absolute;left:0;top:0;width:100%;overflow:hidden}
+h1 .g1{color:var(--c2);clip-path:inset(0 0 60% 0);animation:gl 3.2s infinite steps(1)}
+h1 .g2{color:#4af;clip-path:inset(55% 0 0 0);animation:gl 2.7s infinite steps(1) reverse}
+@keyframes gl{0%,92%,100%{transform:none;opacity:0}93%{transform:translate(-3px,1px);opacity:.9}95%{transform:translate(3px,-1px);opacity:.9}97%{transform:translate(-1px,0);opacity:.7}}
+#log{min-height:118px;font-size:12.5px;color:#7fe9d6;white-space:pre-wrap;margin-bottom:12px}
+#log .ok{color:var(--c)} #log .warn{color:#ffd166}
+.cur:after{content:"█";animation:bl 1s steps(1) infinite;color:var(--c)}
+@keyframes bl{50%{opacity:0}}
+label{display:block;font-size:11px;letter-spacing:.18em;color:var(--dim);margin:10px 0 4px}
+.in{display:flex;align-items:center;border:1px solid var(--dim);background:rgba(0,0,0,.5)}
+.in:focus-within{border-color:var(--c);box-shadow:0 0 10px rgba(33,243,208,.35)}
+.in b{padding:0 8px;color:var(--c2)}
+input{flex:1;min-width:0;background:transparent;border:0;outline:0;color:var(--txt);font:inherit;padding:10px 8px 10px 0;caret-color:var(--c)}
+button{margin-top:16px;width:100%;padding:11px;border:1px solid var(--c);background:rgba(33,243,208,.08);
+  color:var(--c);font:inherit;letter-spacing:.3em;cursor:pointer;text-shadow:0 0 6px var(--c);transition:.15s}
+button:hover:not(:disabled){background:var(--c);color:#001;text-shadow:none}
+button:disabled{opacity:.5;cursor:wait}
+.bar{height:3px;background:#06201c;margin-top:12px;overflow:hidden}
+.bar i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--c),var(--c2));transition:width .2s}
+#m{min-height:20px;margin-top:10px;font-size:13px;letter-spacing:.05em}
+#m.err{color:var(--err);text-shadow:0 0 6px var(--err)} #m.ok{color:var(--c)}
+.shake{animation:sh .4s}
+@keyframes sh{20%,60%{transform:translateX(-8px)}40%,80%{transform:translateX(8px)}}
+.foot{margin-top:12px;font-size:10.5px;color:var(--dim);display:flex;justify-content:space-between;letter-spacing:.1em}
+@media (prefers-reduced-motion:reduce){ #rain{display:none}h1 span{display:none}.panel{animation:none}}
+</style></head>
+<body>
+<canvas id="rain" aria-hidden="true"></canvas>
+<div class="wrap"><form class="panel" id="lf" autocomplete="on">
+  <div class="hdr"><span>SURVEILLANCE NODE</span><span id="clk">--:--:--</span></div>
+  <h1>NVR<span class="g1">NVR</span><span class="g2">NVR</span></h1>
+  <div id="log" aria-live="polite"></div>
+  <label for="u">// მომხმარებელი</label>
+  <div class="in"><b>&gt;</b><input id="u" name="username" autocomplete="username" required autofocus spellcheck="false"></div>
+  <label for="p">// პაროლი</label>
+  <div class="in"><b>#</b><input id="p" name="password" type="password" autocomplete="current-password" required></div>
+  <div id="tfa" hidden>
+    <label for="t">// ორფაქტორიანი კოდი</label>
+    <div class="in"><b>⧉</b><input id="t" name="totp" inputmode="numeric" autocomplete="one-time-code"
+      pattern="[0-9 ]*" maxlength="9" placeholder="123456"></div>
+  </div>
+  <button id="btn">[ შესვლა ]</button>
+  <div class="bar"><i id="pb"></i></div>
+  <div id="m"></div>
+  <div class="foot"><span>ENC: SHA-256 / PoW</span><span id="ipx"></span></div>
+</form></div>
 <script>
 // SHA-256 (WebCrypto is unavailable on plain-HTTP origins, so a small JS implementation is used)
 const K = [0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,
@@ -41,32 +104,100 @@ function sha256hex(str) {
   }
   return [h0, h1, h2, h3, h4, h5, h6, h7].map(x => (x >>> 0).toString(16).padStart(8, '0')).join('');
 }
-const NONCE = {{ nonce|tojson }}, PREFIX = {{ pow|tojson }};
-// proof-of-work in small chunks so the page stays responsive
+let NONCE = {{ nonce|tojson }};
+const PREFIX = {{ pow|tojson }};
+const $ = id => document.getElementById(id);
+const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+// ---- digital rain (decorative)
+(function () {
+  const cv = $('rain'), cx = cv.getContext('2d');
+  if (reduce) return;
+  const glyphs = 'ｱｲｳｴｵｶｷｸｹｺｻｼｽｾｿﾀﾁﾂﾃﾄ0123456789ABCDEFაბგდევზთიკლმნოპ#$%&*+=<>';
+  let cols, drops, fs = 16;
+  function size() {
+    cv.width = innerWidth; cv.height = innerHeight;
+    cols = Math.ceil(cv.width / fs); drops = Array.from({length: cols}, () => Math.random() * -50);
+  }
+  size(); addEventListener('resize', size);
+  setInterval(() => {
+    cx.fillStyle = 'rgba(3,7,10,.12)'; cx.fillRect(0, 0, cv.width, cv.height);
+    cx.font = fs + 'px monospace';
+    for (let i = 0; i < cols; i++) {
+      const ch = glyphs[Math.random() * glyphs.length | 0], y = drops[i] * fs;
+      cx.fillStyle = Math.random() < .03 ? '#ff2bd6' : (Math.random() < .1 ? '#e6fffa' : '#14b89c');
+      cx.fillText(ch, i * fs, y);
+      if (y > cv.height && Math.random() > .975) drops[i] = 0;
+      drops[i] += .6 + (i % 3) * .2;
+    }
+  }, 45);
+})();
+
+// ---- clock + host
+setInterval(() => $('clk').textContent = new Date().toLocaleTimeString('en-GB'), 1000);
+$('ipx').textContent = 'HOST ' + location.hostname;
+
+// ---- boot log (typed)
+const log = $('log');
+function type(line, cls) {
+  return new Promise(res => {
+    const d = document.createElement('div'); if (cls) d.className = cls; log.appendChild(d);
+    if (reduce) { d.textContent = line; return res(); }
+    let k = 0; d.classList.add('cur');
+    (function t() {
+      d.textContent = line.slice(0, ++k);
+      if (k < line.length) setTimeout(t, 12 + Math.random() * 18); else { d.classList.remove('cur'); res(); }
+    })();
+  });
+}
+let powDone = false;
+(async () => {
+  await type('> init secure channel ......... ', null);
+  log.lastChild.innerHTML += '<span class="ok">OK</span>';
+  await type('> video core ................... ', null);
+  log.lastChild.innerHTML += '<span class="ok">ONLINE</span>';
+  await type('> handshake (proof-of-work) .... ', null);
+  const h = log.lastChild;
+  const w = setInterval(() => { if (powDone) { clearInterval(w); h.innerHTML += '<span class="ok">DONE</span>'; } }, 100);
+  await type('> awaiting credentials', 'warn');
+  log.lastChild.classList.add('cur');
+})();
+
+// ---- proof-of-work in small chunks so the page stays responsive
 function solve() {
   return new Promise(res => {
     let c = 0;
     (function step() {
-      for (let i = 0; i < 4000; i++, c++) if (sha256hex(NONCE + ':' + c).startsWith(PREFIX)) return res(c);
+      for (let i = 0; i < 4000; i++, c++) if (sha256hex(NONCE + ':' + c).startsWith(PREFIX)) {
+        powDone = true; $('pb').style.width = '100%'; return res(c);
+      }
+      $('pb').style.width = Math.min(95, c / 700) + '%';
       setTimeout(step, 0);
     })();
   });
 }
-const pow = solve();   // start right away, usually done before the password is typed
-const f = document.getElementById('lf'), m = document.getElementById('m'), btn = document.getElementById('btn');
+let pow = solve();   // start right away, usually done before the password is typed
+const f = $('lf'), m = $('m'), btn = $('btn'), tfa = $('tfa'), tin = $('t');
+let needCode = false;
 f.onsubmit = async e => {
-  e.preventDefault(); btn.disabled = true; m.className = 'small muted'; m.textContent = 'მოწმდება…';
+  e.preventDefault(); btn.disabled = true; m.className = 'small muted'; m.textContent = '> ავტორიზაცია…';
   const c = await pow;
   const r = await fetch('/_/k', {method: 'POST', headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({u: f.username.value, p: f.password.value, n: NONCE, c: String(c)})}).catch(() => null);
+    body: JSON.stringify({u: f.username.value, p: f.password.value, t: tin.value, n: NONCE, c: String(c)})}).catch(() => null);
   const j = r ? await r.json().catch(() => ({})) : {};
-  if (j.s === 'ok') { location = j.to; return; }
-  m.className = 'err';
-  m.textContent = j.s === 'locked' ? 'ძალიან ბევრი მცდელობა. სცადეთ 10 წუთში.'
-               : j.s === 'denied' ? 'არასწორი სახელი ან პაროლი'
-               : 'სესიას ვადა გაუვიდა — გვერდი განახლდება';
-  if (!j.s || j.s === 'locked') { setTimeout(() => location.reload(), 1500); return; }
-  setTimeout(() => location.reload(), 1200);  // a nonce is single-use: fetch a fresh one
+  if (j.s === 'ok') { m.className = 'ok'; m.textContent = '> ACCESS GRANTED'; setTimeout(() => location = j.to, 350); return; }
+  // second factor required: reveal the code box, solve a fresh proof-of-work, keep the typed password
+  if (j.s === '2fa' && j.n) {
+    needCode = true; tfa.hidden = false; NONCE = j.n; pow = solve(); btn.disabled = false;
+    m.className = j.bad ? 'err' : 'small muted';
+    m.textContent = j.bad ? '> არასწორი კოდი — სცადეთ ხელახლა' : '> საჭიროა ორფაქტორიანი კოდი აპლიკაციიდან';
+    tin.value = ''; tin.focus(); return;
+  }
+  m.className = 'err'; f.classList.remove('shake'); void f.offsetWidth; f.classList.add('shake');
+  m.textContent = j.s === 'locked' ? '> ბლოკი: ძალიან ბევრი მცდელობა. სცადეთ 10 წუთში.'
+               : j.s === 'denied' ? '> ACCESS DENIED: არასწორი სახელი ან პაროლი'
+               : '> სესიას ვადა გაუვიდა. გვერდი განახლდება';
+  setTimeout(() => location.reload(), j.s === 'denied' ? 1400 : 1800);  // a nonce is single-use: fetch a fresh one
 };
 </script>
-{% endblock %}
+</body></html>

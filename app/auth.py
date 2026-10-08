@@ -1,5 +1,5 @@
 import hashlib, hmac, os, secrets, time
-from . import db
+from . import db, totp
 
 SESSION_COOKIE = "nvr_s"
 SESSION_TTL = 7 * 86400
@@ -42,14 +42,33 @@ def note_fail(ip):
     _fails.setdefault(ip, []).append(time.time())
 
 
-def login(username, pw):
+def verify_pw(username, pw):
+    """Check username + password only. Returns the user row (dict) or None."""
     u = db.q1("SELECT * FROM users WHERE username=? AND active=1", (username,))
     if not u or not check_pw(pw, u["pw_hash"]):
         return None
+    return dict(u)
+
+
+def needs_totp(user):
+    return bool(user and user.get("totp_secret"))
+
+
+def check_totp(user, code):
+    return totp.verify(user.get("totp_secret"), code)
+
+
+def start_session(user):
     tok = secrets.token_urlsafe(32)
     db.ex("DELETE FROM sessions WHERE expires < ?", (time.time(),))
-    db.ex("INSERT INTO sessions VALUES(?,?,?)", (tok, u["id"], time.time() + SESSION_TTL))
+    db.ex("INSERT INTO sessions VALUES(?,?,?)", (tok, user["id"], time.time() + SESSION_TTL))
     return tok
+
+
+def login(username, pw):
+    """Password-only login (no 2FA). Kept for callers that don't do two-factor."""
+    u = verify_pw(username, pw)
+    return start_session(u) if u else None
 
 
 def logout(tok):

@@ -4,7 +4,7 @@
 <div class="row small"><span class="muted">ხარისხი:</span>
   <button type="button" class="btn q" data-q="high">მაღალი (მთავარი ნაკადი)</button>
   <button type="button" class="btn q" data-q="low">დაბალი (დამხმარე ნაკადი, ნელი კავშირისთვის)</button>
-  <span class="muted" id="qnote"></span></div>
+  <span class="muted" id="qnote">{% if remote %}გარე კავშირი — ნაგულისხმევად დაბალი ხარისხი{% endif %}</span></div>
 {% endif %}
 {% if not cams %}
   <div class="card">კამერები არ გაქვთ მინიჭებული.{% if user.role == 'admin' %} <a href="/admin/cameras/new">დაამატეთ კამერა</a>.{% endif %}</div>
@@ -15,21 +15,97 @@
     <div class="tile-h"><a href="/cam/{{ c.id }}">{{ c.name }}</a>
       <span class="badges"><span class="b-rec" hidden>● REC</span><span class="b-mot" hidden>მოძრაობა</span>
         {% if c.ptz and user.role in ('admin', 'operator') %}<a class="b-ptz" href="/cam/{{ c.id }}" title="ტრიალი და ზუმი">🕹 PTZ</a>{% endif %}</span></div>
-    <div class="player" data-main="{{ c.id }}" data-sub="{{ c.id ~ ('__sub' if c.has_sub else '') }}"></div>
+    <div class="player" data-main="{{ c.id }}" data-sub="{{ c.id ~ ('__sub' if c.has_sub else '') }}" role="button" tabindex="0" aria-label="გასადიდებლად დააჭირეთ"><svg class="tap-hint" viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M1 6V1h5M10 1h5v5M15 10v5h-5M6 15H1v-5"/></svg></div>
     {% if user.role == 'admin' %}<div class="tile-f">{% include "_modes.html" %}</div>{% endif %}
   </div>
 {% endfor %}
 </div>
 <script>
-// Quality is a per-browser choice: "high" plays every camera's main stream (needs ~12 Mbps for the full
-// grid over VPN), "low" the light sub-streams (~2 Mbps). Remembered in this browser only.
-let Q = 'high';
-try { Q = localStorage.getItem('nvr.quality') || 'high'; } catch (e) {}
+// Quality is a per-browser choice: "high" plays every camera's main stream, "low" the light sub-streams.
+// On the LAN it defaults to high; over the internet (remote) to low, so the site's upload isn't saturated.
+// The choice is remembered separately for local and remote use.
+const REMOTE = {{ remote|tojson }}, QKEY = REMOTE ? 'nvr.quality.remote' : 'nvr.quality';
+let Q = REMOTE ? 'low' : 'high';
+try { Q = localStorage.getItem(QKEY) || Q; } catch (e) {}
 document.querySelectorAll('.q').forEach(b => {
   b.classList.toggle('primary', b.dataset.q === Q);
-  b.onclick = () => { try { localStorage.setItem('nvr.quality', b.dataset.q); } catch (e) {} location.reload(); };
+  b.onclick = () => { try { localStorage.setItem(QKEY, b.dataset.q); } catch (e) {} location.reload(); };
 });
-document.querySelectorAll('.player').forEach(p => mountPlayer(p, Q === 'high' ? p.dataset.main : p.dataset.sub));
+const players = [...document.querySelectorAll('.player')];
+const gridSrc = p => Q === 'high' ? p.dataset.main : p.dataset.sub;
+players.forEach(p => mountPlayer(p, gridSrc(p)));
+
+// Tap/click a tile to enlarge it with an animated "zoom out of the grid" effect (works the same on
+// desktop and on iPhone — no Fullscreen API, which iOS won't give a <div>). While enlarged the camera
+// switches to its main (full-quality) stream and every other tile drops its connection, so nothing else
+// is pulled through the uplink. A FLIP transform animates between the grid slot and full screen.
+let focused = null;
+function focusOn(p) {
+  if (focused === p) return;
+  focused = p;
+  players.forEach(o => setStream(o, o === p ? o.dataset.main : (p ? '' : gridSrc(o))));
+}
+const backdrop = document.createElement('div');
+backdrop.className = 'zoom-backdrop';
+backdrop.onclick = () => unzoom();
+let zoomedP = null, animating = false;
+
+function flip(p, first, last, ms, ease, done) {
+  const dx = first.left - last.left, dy = first.top - last.top;
+  const sx = first.width / last.width, sy = first.height / last.height;
+  p.style.transformOrigin = 'top left';
+  p.style.transition = 'none';
+  p.style.transform = `translate(${dx}px,${dy}px) scale(${sx},${sy})`;
+  requestAnimationFrame(() => {
+    p.style.transition = `transform ${ms}ms ${ease}`;
+    p.style.transform = 'none';
+    setTimeout(() => { p.style.transition = ''; p.style.transform = ''; p.style.transformOrigin = ''; done && done(); }, ms + 30);
+  });
+}
+function zoomTile(p) {
+  if (zoomedP || animating) return;
+  animating = true; zoomedP = p;
+  const first = p.getBoundingClientRect();
+  const ph = document.createElement('div');            // placeholder keeps the grid from reflowing
+  ph.style.width = first.width + 'px'; ph.style.height = first.height + 'px';
+  p._ph = ph; p.parentNode.insertBefore(ph, p);
+  document.body.appendChild(backdrop);
+  document.body.classList.add('has-zoom');
+  requestAnimationFrame(() => backdrop.classList.add('on'));
+  p.classList.add('zoomed');
+  const title = (p.closest('.tile').querySelector('.tile-h a') || {}).textContent || '';
+  const bar = document.createElement('div'); bar.className = 'zoom-bar';
+  bar.innerHTML = `<span class="zt">◉ ${title.replace(/[<>&]/g, '')}</span>`;
+  const mute = document.createElement('button'); mute.className = 'zb';
+  const close = document.createElement('button'); close.className = 'zb close'; close.textContent = '✕';
+  const vid = () => p._vs && p._vs.video;
+  const upd = () => { const v = vid(); mute.textContent = (!v || v.muted) ? '🔇' : '🔊'; };
+  mute.onclick = e => { e.stopPropagation(); const v = vid(); if (v) { v.muted = !v.muted; if (!v.muted) v.play().catch(() => {}); } upd(); };
+  close.onclick = e => { e.stopPropagation(); unzoom(); };
+  upd(); bar.append(mute, close); p.appendChild(bar); p._bar = bar;
+  focusOn(p);
+  const last = p.getBoundingClientRect();
+  flip(p, first, last, 380, 'cubic-bezier(.2,.9,.25,1)', () => { animating = false; });
+}
+function unzoom() {
+  const p = zoomedP; if (!p || animating) return;
+  animating = true; zoomedP = null;
+  const first = p.getBoundingClientRect();              // current full-screen rect
+  const last = p._ph.getBoundingClientRect();           // grid slot (held by the placeholder)
+  backdrop.classList.remove('on');
+  if (p._bar) { p._bar.remove(); p._bar = null; }
+  flip(p, first, last, 320, 'cubic-bezier(.4,0,.2,1)', () => {
+    p.classList.remove('zoomed');
+    p._ph && p._ph.remove(); p._ph = null;
+    backdrop.remove(); document.body.classList.remove('has-zoom');
+    focusOn(null); animating = false;
+  });
+}
+document.addEventListener('keydown', e => { if (e.key === 'Escape') unzoom(); });
+document.querySelectorAll('.tile .player').forEach(p => {
+  p.addEventListener('click', () => { if (!zoomedP) zoomTile(p); });
+  p.addEventListener('keydown', e => { if ((e.key === 'Enter' || e.key === ' ') && !zoomedP) { e.preventDefault(); zoomTile(p); } });
+});
 async function poll() {
   try {
     const s = await (await fetch('/state')).json();

@@ -59,7 +59,7 @@ At the end the installer prints the **login link**, user and password (also save
 ```bash
 sudo dnf -y install epel-release dnf-plugins-core && sudo dnf config-manager --set-enabled crb
 sudo dnf -y install https://mirrors.rpmfusion.org/free/el/rpmfusion-free-release-9.noarch.rpm   # ffmpeg
-sudo dnf -y install https://github.com/b1ch1k0/lite-nvr/releases/latest/download/nvr-1.0.0-1.el9.x86_64.rpm
+sudo dnf -y install https://github.com/b1ch1k0/lite-nvr/releases/latest/download/nvr-1.1.0-1.el9.x86_64.rpm
 sudo cat /root/nvr-admin.txt
 ```
 The RPM is self-contained (Python dependencies and go2rtc included), no pip at install time.
@@ -74,6 +74,14 @@ sudo ./setup.sh --tz Europe/Berlin
 ```
 </details>
 
+<details>
+<summary><b>Behind Cloudflare / a reverse proxy (remote access)</b></summary>
+
+To reach it from the internet, point a domain at the box through Cloudflare (or any proxy).
+See **[`deploy/nginx-cloudflare.conf.example`](deploy/nginx-cloudflare.conf.example)** for the real-visitor-IP,
+no-store caching and origin-TLS snippets. Remote viewers automatically fall back to the light sub-streams.
+</details>
+
 **Requirements:** x86_64 (SSE4.2) or arm64 · 2 CPU · 2 GB RAM · internet during install.
 A separate disk for recordings is recommended — see [Recording disk](#-recording-disk).
 
@@ -81,15 +89,17 @@ A separate disk for recordings is recommended — see [Recording disk](#-recordi
 
 | | |
 |---|---|
-| **Cameras** | ONVIF discovery (multicast + unicast subnet scan across VLANs) · templates for Tapo/VIGI, Hikvision/HiWatch/EZVIZ, Dahua/IMOU/Amcrest, Uniview, Reolink, Axis, XMEye (DVRIP) · any RTSP URL · NVR/DVR channels · connection test before saving |
-| **Live** | grid with *high* (main) or *low* (sub-stream) quality per browser · adaptive jitter buffer · last recorded frame as tile background · recording / motion badges |
+| **Cameras** | **auto-detect** (port-scan + ONVIF/RTSP vendor probe from one IP) · ONVIF discovery (multicast + unicast subnet scan across VLANs) · templates for Tapo/VIGI, Hikvision/HiWatch/EZVIZ, Dahua/IMOU/Amcrest, Uniview, Reolink, Axis, XMEye (DVRIP) · any RTSP URL · NVR/DVR channels · connection test before saving |
+| **Live** | grid with *high* (main) or *low* (sub-stream) quality per browser · **tap a tile to enlarge** (animated, switches to the main stream and disconnects the rest) · adaptive jitter buffer · last recorded frame as poster · recording / motion badges |
+| **Remote** | viewers over the internet default to the light sub-streams (saves uplink); LAN stays full quality — remembered separately |
 | **PTZ** | ONVIF pan/tilt/zoom, speed, presets, keyboard arrows; the camera stops by itself if the browser disconnects |
 | **Recording** | per camera: off / 24-7 / motion-only · MP4 segments without re-encoding · watchdog restarts stalled streams |
 | **Motion** | detection on the sub-stream (≈3 % CPU per camera) · ignores light switches, IR day/night, on-screen clocks · events with snapshots |
 | **Playback** | 24 h + 1 h timeline with motion marks · event thumbnails · 0.5–8× speed · download |
-| **Users** | admin / operator / viewer · per-camera access · audit log |
+| **Users** | admin / operator / viewer · per-camera access · **optional two-factor login (TOTP)** · audit log |
 | **Storage** | retention in days · low-disk guard · offload to **Google Cloud Storage** or an **SFTP** box (rclone) |
-| **Security** | hidden login URL, everything else 404 · proof-of-work login · rate limiting · see [SECURITY.md](SECURITY.md) |
+| **Security** | hidden login URL, everything else 404 · proof-of-work login · rate limiting · optional login on the plain IP · see [SECURITY.md](SECURITY.md) |
+| **Look** | terminal / neon “cyber” theme · responsive, works on the phone (iPhone Safari autoplay) |
 
 > **UI language:** the web interface is currently in **Georgian** 🇬🇪. An English translation is on the roadmap — PRs welcome.
 

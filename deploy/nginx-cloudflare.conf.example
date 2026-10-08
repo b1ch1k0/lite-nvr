@@ -1,0 +1,55 @@
+# Optional: put lite-nvr behind Cloudflare (or any reverse proxy / CDN).
+# Copy the relevant bits into your nginx config, then reload nginx.
+#
+# Why you want this:
+#   1. real visitor IP — without it the login lockout sees the proxy's IP, so one bad
+#      bot could lock out everyone behind that edge. With it, each visitor is rate-limited
+#      on their own address.
+#   2. never cache anything behind the login — recordings and snapshots must not be stored
+#      on a shared cache. Only /static/ is public.
+#
+# ── 1. real client IP ───────────────────────────────────────────────────────
+# Put this in a file like /etc/nginx/conf.d/realip.conf.
+# For Cloudflare, the current edge ranges are published at https://www.cloudflare.com/ips —
+# add one `set_real_ip_from` line per range (v4 and v6), for example:
+#
+#   set_real_ip_from 173.245.48.0/20;
+#   set_real_ip_from 103.21.244.0/22;
+#   ... (all ranges from the list above) ...
+#   set_real_ip_from 2400:cb00::/32;
+#   real_ip_header CF-Connecting-IP;     # Cloudflare; use X-Forwarded-For for a plain proxy
+#
+# Behind a trusted LAN proxy instead of Cloudflare:
+#   set_real_ip_from 10.0.0.0/8;
+#   real_ip_header X-Forwarded-For;
+
+# ── 2. in the server {} block ───────────────────────────────────────────────
+# Add near the top of the lite-nvr server block:
+#
+#   # nothing behind the login may be stored by a shared cache; only static assets are public
+#   map $uri $nvr_cache { ~^/static/ "public, max-age=3600"; default "private, no-store"; }
+#   add_header Cache-Control $nvr_cache always;
+#   proxy_hide_header Cache-Control;        # replace the app's header with ours
+#
+# And in `location / { ... }`, trust the proxy's scheme so secure cookies work over https:
+#   # map outside the server block:  map $http_x_forwarded_proto $nvr_proto { https https; default $scheme; }
+#   proxy_set_header X-Forwarded-Proto $nvr_proto;
+
+# ── 3. TLS between the proxy and this origin ────────────────────────────────
+# If the proxy connects to the origin over https (Cloudflare "Full" mode), give nginx a
+# certificate. A self-signed one is fine for "Full" (not "Full (strict)"):
+#
+#   openssl req -x509 -nodes -newkey rsa:2048 -days 3650 \
+#     -subj "/CN=nvr.example.com" -addext "subjectAltName=DNS:nvr.example.com" \
+#     -keyout /etc/nginx/ssl/nvr.key -out /etc/nginx/ssl/nvr.crt
+#
+# then add to the server block:
+#   listen 443 ssl;
+#   listen [::]:443 ssl;
+#   ssl_certificate     /etc/nginx/ssl/nvr.crt;
+#   ssl_certificate_key /etc/nginx/ssl/nvr.key;
+#
+# Cloudflare "Flexible" needs no origin certificate, but the proxy→origin hop is unencrypted.
+#
+# Security note: a proxied origin is only hidden if the origin's own IP isn't reachable
+# directly. Restrict ports 80/443 to the proxy's address ranges at your firewall/router.

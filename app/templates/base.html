@@ -1,10 +1,10 @@
 <!doctype html>
 <html lang="ka"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>{% block title %}NVR{% endblock %}</title><link rel="stylesheet" href="/static/style.css?v=4"></head>
+<title>{% block title %}NVR{% endblock %}</title><link rel="stylesheet" href="/static/style.css?v=9"></head>
 <body>
 {% if user %}
 <nav>
-  <b class="brand">● NVR</b>
+  <b class="brand">NVR<i>_</i></b>
   <a href="/live">ცოცხლად</a>
   {% if user.role != 'viewer' %}<a href="/playback">ჩანაწერები</a>{% endif %}
   {% if user.role == 'admin' %}
@@ -12,6 +12,7 @@
     <a href="/admin/storage">შენახვა</a><a href="/admin/status">სტატუსი</a>
   {% endif %}
   <span class="sp"></span>
+  <span class="clock mono" id="nclk"></span>
   <a href="/account">{{ user.username }}</a>
   <form method="post" action="/logout" class="inline"><button class="link">გასვლა</button></form>
 </nav>
@@ -21,4 +22,9 @@
 {% if err %}<div class="err">{{ err }}</div>{% endif %}
 {% block body %}{% endblock %}
 </main>
+{% if user %}<script>
+// mark the current section in the menu + a small clock
+document.querySelectorAll('nav a').forEach(a => { if (location.pathname.startsWith(a.getAttribute('href'))) a.classList.add('on'); });
+(function t() { const c = document.getElementById('nclk'); if (c) c.textContent = new Date().toLocaleTimeString('en-GB'); setTimeout(t, 1000); })();
+</script>{% endif %}
 </body></html>

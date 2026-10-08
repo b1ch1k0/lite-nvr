@@ -238,8 +238,16 @@ export class VideoRTC extends HTMLElement {
      */
     oninit() {
         this.video = document.createElement('video');
-        this.video.controls = true;
+        // NVR: live tiles have no native controls (on iOS they'd show a tap-to-play overlay) — the viewer
+        // taps the tile to enlarge, and unmutes from the enlarged view. Muted + inline + autoplay is what
+        // lets iOS Safari start playing on its own without a user gesture.
+        this.video.controls = false;
+        this.video.muted = true;
+        this.video.autoplay = true;
         this.video.playsInline = true;
+        this.video.setAttribute('muted', '');
+        this.video.setAttribute('playsinline', '');
+        this.video.setAttribute('webkit-playsinline', '');
         this.video.preload = 'auto';
 
         this.video.style.display = 'block'; // fix bottom margin 4px

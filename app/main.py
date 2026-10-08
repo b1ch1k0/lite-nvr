@@ -1,4 +1,4 @@
-import asyncio, datetime, hashlib, hmac, json, logging, os, re, secrets, shutil, subprocess, time
+import asyncio, datetime, hashlib, hmac, ipaddress, json, logging, os, re, secrets, shutil, subprocess, time
 from contextlib import asynccontextmanager
 from urllib.parse import parse_qs, quote, urlsplit
 
@@ -8,7 +8,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.exceptions import HTTPException
 
-from . import auth, db, go2rtc, onvif, poster, ptz, recorder, storage, vendors
+from . import auth, db, go2rtc, onvif, poster, ptz, qr, recorder, storage, totp, vendors
 from .config import BASE, EVENTS_DIR, GCS_KEY, GO2RTC_RTSP, POSTER_DIR, REC_DIR
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
@@ -52,6 +52,21 @@ def ip(request):
     return request.headers.get("x-real-ip") or (request.client.host if request.client else "?")
 
 
+_CGNAT = ipaddress.ip_network("100.64.0.0/10")   # Tailscale / carrier VPNs count as local
+
+
+def is_remote(request):
+    """True when the viewer comes over the internet (e.g. via Cloudflare), False on the LAN or a VPN.
+    Remote viewers start on the light sub-streams so the site's upload isn't eaten by a full-quality grid."""
+    try:
+        a = ipaddress.ip_address(ip(request))
+    except ValueError:
+        return True
+    if getattr(a, "ipv4_mapped", None):
+        a = a.ipv4_mapped
+    return not (a.is_private or a.is_loopback or a.is_link_local or a in _CGNAT)
+
+
 def need(request, role=None):
     u = auth.user_from_request(request)
     if not u:
@@ -62,7 +77,8 @@ def need(request, role=None):
 
 
 def page(request, name, user, **ctx):
-    ctx.update(user=user, msg=request.query_params.get("msg"), err=request.query_params.get("err"))
+    ctx.update(user=user, msg=request.query_params.get("msg"), err=request.query_params.get("err"),
+               remote=is_remote(request))
     return templates.TemplateResponse(request, name, ctx)
 
 
@@ -90,6 +106,22 @@ def _secret():
         sec = secrets.token_hex(32)
         db.set_setting("app_secret", sec)
     return sec
+
+
+def open_login():
+    """settings.open_login=1 → the login page is also served at / (plain IP), not only at /s/<slug>."""
+    return db.get_setting("open_login") == "1"
+
+
+def login_url():
+    return "/" if open_login() else f"/s/{gate_path()}"
+
+
+def _login_page(request):
+    r = templates.TemplateResponse(request, "login.html", {"user": None, "nonce": _make_nonce(), "pow": POW_PREFIX})
+    r.headers["Cache-Control"] = "no-store"
+    r.headers["X-Robots-Tag"] = "noindex, nofollow"
+    return r
 
 
 def gate_path(regenerate=False):
@@ -129,6 +161,8 @@ def _check_pow(nonce, counter):
 def root(request: Request):
     if auth.user_from_request(request):
         return RedirectResponse("/live", 303)
+    if open_login():
+        return _login_page(request)
     raise HTTPException(404)
 
 
@@ -138,10 +172,7 @@ def login_page(request: Request, slug: str):
         raise HTTPException(404)
     if auth.user_from_request(request):
         return RedirectResponse("/live", 303)
-    r = templates.TemplateResponse(request, "login.html", {"user": None, "nonce": _make_nonce(), "pow": POW_PREFIX})
-    r.headers["Cache-Control"] = "no-store"
-    r.headers["X-Robots-Tag"] = "noindex, nofollow"
-    return r
+    return _login_page(request)
 
 
 @app.post("/_/k")
@@ -156,11 +187,20 @@ async def gate_auth(request: Request):
     if auth.blocked(addr):
         return JSONResponse({"s": "locked"}, 429)
     username = str(j.get("u", "")).strip()[:64]
-    tok = auth.login(username, str(j.get("p", ""))[:256])
-    if not tok:
+    user = auth.verify_pw(username, str(j.get("p", ""))[:256])
+    if not user:
         auth.note_fail(addr)
         db.audit(username, addr, "შესვლა ვერ მოხერხდა")
         return JSONResponse({"s": "denied"}, 403)
+    if auth.needs_totp(user):
+        code = str(j.get("t", ""))[:12]
+        if not code.strip():
+            return JSONResponse({"s": "2fa", "n": _make_nonce()})   # ask for the 6-digit code
+        if not auth.check_totp(user, code):
+            auth.note_fail(addr)
+            db.audit(username, addr, "ორფაქტორიანი კოდი არასწორია")
+            return JSONResponse({"s": "2fa", "bad": 1, "n": _make_nonce()}, 403)
+    tok = auth.start_session(user)
     db.audit(username, addr, "შესვლა")
     r = JSONResponse({"s": "ok", "to": "/live"})
     secure = request.headers.get("x-forwarded-proto") == "https"
@@ -178,7 +218,7 @@ def logout(request: Request):
     tok = request.cookies.get(auth.SESSION_COOKIE)
     if tok:
         auth.logout(tok)
-    r = RedirectResponse(f"/s/{gate_path()}", 303)
+    r = RedirectResponse(login_url(), 303)
     r.delete_cookie(auth.SESSION_COOKIE)
     return r
 
@@ -198,10 +238,63 @@ def auth_stream(request: Request):
     return Response(status_code=204 if auth.can(u, cam, "live") else 403)
 
 
+def _totp_pending_key(uid):
+    return f"totp_pending:{uid}"
+
+
 @app.get("/account", response_class=HTMLResponse)
 def account(request: Request):
     u = need(request)
-    return page(request, "account.html", u, gate=gate_path() if u["role"] == "admin" else "")
+    pending = db.get_setting(_totp_pending_key(u["id"]))
+    qr_svg, otp_uri = "", ""
+    if pending and not u.get("totp_secret"):
+        otp_uri = totp.provisioning_uri(pending, u["username"])
+        qr_svg = qr.svg(otp_uri) or ""
+    return page(request, "account.html", u, gate=gate_path() if u["role"] == "admin" else "",
+                open_login=open_login(), totp_on=bool(u.get("totp_secret")),
+                totp_pending=pending, totp_secret=pending, qr_svg=qr_svg, otp_uri=otp_uri)
+
+
+@app.post("/account/2fa/start")
+def account_2fa_start(request: Request):
+    u = need(request)
+    if not u.get("totp_secret"):
+        db.set_setting(_totp_pending_key(u["id"]), totp.new_secret())
+    return back("/account", msg="დაასკანერეთ QR კოდი აპლიკაციით და შეიყვანეთ კოდი დასადასტურებლად")
+
+
+@app.post("/account/2fa/cancel")
+def account_2fa_cancel(request: Request):
+    u = need(request)
+    db.set_setting(_totp_pending_key(u["id"]), "")
+    return back("/account", msg="ორფაქტორიანი ავტორიზაციის ჩართვა გაუქმდა")
+
+
+@app.post("/account/2fa/confirm")
+async def account_2fa_confirm(request: Request):
+    u = need(request)
+    code = (await request.form()).get("code", "")
+    pending = db.get_setting(_totp_pending_key(u["id"]))
+    if not pending:
+        return back("/account", err="ჯერ დააჭირეთ „ჩართვას“")
+    if not totp.verify(pending, code):
+        return back("/account", err="არასწორი კოდი — შეამოწმეთ, რომ ტელეფონის დრო ზუსტია")
+    db.ex("UPDATE users SET totp_secret=? WHERE id=?", (pending, u["id"]))
+    db.set_setting(_totp_pending_key(u["id"]), "")
+    db.audit(u["username"], ip(request), "ორფაქტორიანი ავტორიზაცია ჩაირთო")
+    return back("/account", msg="ორფაქტორიანი ავტორიზაცია ჩაირთო")
+
+
+@app.post("/account/2fa/disable")
+async def account_2fa_disable(request: Request):
+    u = need(request)
+    f = await request.form()
+    if not auth.check_pw(f.get("password", ""), u["pw_hash"]):
+        return back("/account", err="პაროლი არასწორია")
+    db.ex("UPDATE users SET totp_secret=NULL WHERE id=?", (u["id"],))
+    db.set_setting(_totp_pending_key(u["id"]), "")
+    db.audit(u["username"], ip(request), "ორფაქტორიანი ავტორიზაცია გამოირთო")
+    return back("/account", msg="ორფაქტორიანი ავტორიზაცია გამოირთო")
 
 
 @app.post("/account/gate")
@@ -210,6 +303,15 @@ def account_gate(request: Request):
     gate_path(regenerate=True)
     db.audit(u["username"], ip(request), "შესვლის დამალული მისამართი შეიცვალა")
     return back("/account", msg="ახალი მისამართი შეიქმნა — ძველი აღარ მუშაობს")
+
+
+@app.post("/account/open-login")
+async def account_open_login(request: Request):
+    u = need(request, "admin")
+    on = (await request.form()).get("on") == "1"
+    db.set_setting("open_login", "1" if on else "0")
+    db.audit(u["username"], ip(request), "შესვლა IP-ზე " + ("ჩაირთო" if on else "გამოირთო"))
+    return back("/account", msg="შესვლის გვერდი ახლა " + ("IP მისამართზეა" if on else "მხოლოდ დამალულ მისამართზეა"))
 
 
 @app.post("/account")
@@ -253,6 +355,7 @@ def cam_view(request: Request, cam_id: str):
     c = db.camera(cam_id)
     if not c or not auth.can(u, cam_id, "live"):
         raise HTTPException(404)
+    c["has_sub"] = bool(vendors.stream_urls(c)[1])
     return page(request, "cam.html", u, cam=c, can_playback=auth.can(u, cam_id, "playback"),
                 can_ptz=bool(c.get("ptz")) and auth.can(u, cam_id, "ptz"))
 
@@ -629,7 +732,101 @@ async def ffprobe(url):
     return {"ok": True, "info": ", ".join(parts) + warn}
 
 
-# ---------------------------------------------------------------- admin: ONVIF
+# ---------------------------------------------------------------- admin: ONVIF / auto-detect
+# ports worth probing on an unknown camera: RTSP, the common ONVIF service ports, and vendor SDK ports
+DETECT_PORTS = {
+    554: "RTSP", 8554: "RTSP",
+    80: "ONVIF / HTTP", 8000: "ONVIF (Hikvision/Reolink)", 2020: "ONVIF (Tapo)",
+    8899: "ONVIF (XMEye)", 8080: "ONVIF", 37777: "Dahua SDK", 34567: "XMEye (DVRIP)",
+}
+# vendors tried over RTSP on an open 554, in order; label from VENDORS
+DETECT_RTSP_VENDORS = ["hikvision", "dahua", "tapo", "uniview", "reolink", "axis"]
+# ONVIF service ports tried, most specific first
+DETECT_ONVIF_PORTS = [2020, 8899, 8000, 80, 8080]
+
+
+async def _port_open(host, port, timeout=0.8):
+    try:
+        fut = asyncio.open_connection(host, port)
+        r, w = await asyncio.wait_for(fut, timeout)
+        w.close()
+        try:
+            await w.wait_closed()
+        except Exception:
+            pass
+        return True
+    except Exception:
+        return False
+
+
+@app.post("/admin/onvif/detect")
+async def onvif_detect(request: Request, host: str = Form(...), username: str = Form(""), password: str = Form("")):
+    need(request, "admin")
+    host = host.strip()
+    if not host:
+        return JSONResponse({"ok": False, "error": "შეიყვანეთ IP"})
+    user, pw = username.strip(), password
+    # 1) which ports are open
+    results = await asyncio.gather(*[_port_open(host, p) for p in DETECT_PORTS])
+    open_ports = {p for p, ok in zip(DETECT_PORTS, results) if ok}
+    findings = []
+    # 2) ONVIF — first service port that answers gives us real stream URIs + profiles
+    onvif_hit = None
+    for port in DETECT_ONVIF_PORTS:
+        if port not in open_ports:
+            continue
+        try:
+            cam = onvif.Camera(host, port, user, pw)
+            res = await asyncio.to_thread(cam.probe_all)
+            onvif_hit = {"method": "onvif", "port": port, **res}
+            break
+        except onvif.OnvifError:
+            continue
+        except Exception:
+            continue
+    # 3) RTSP — only when ONVIF didn't already hand us exact URLs. Try each vendor's standard path on 554,
+    #    one at a time (cheap cameras drop extra RTSP sessions), reporting those that return real video.
+    if not onvif_hit and (554 in open_ports or 8554 in open_ports):
+        rport = 554 if 554 in open_ports else 8554
+        for vkey in DETECT_RTSP_VENDORS:
+            v = vendors.VENDORS[vkey]
+            cam = {"vendor": vkey, "host": host, "port": rport, "username": user, "password": pw, "channel": 1}
+            main, sub = vendors.stream_urls(cam)
+            r = await ffprobe(main)
+            if r.get("ok"):
+                findings.append({"method": "rtsp", "vendor": vkey, "label": v["label"], "port": rport,
+                                 "info": r.get("info", ""), "main": vendors.mask(main), "sub": vendors.mask(sub)})
+    return JSONResponse({"ok": True, "host": host,
+                         "open": [{"port": p, "label": DETECT_PORTS[p]} for p in sorted(open_ports)],
+                         "onvif": onvif_hit, "rtsp": findings})
+
+
+@app.post("/admin/detect/add")
+async def detect_add(request: Request):
+    """Add a camera found by RTSP vendor detection — stored by vendor template, creds kept out of the URL."""
+    u = need(request, "admin")
+    f = await request.form()
+    vendor = (f.get("vendor") or "").strip()
+    if vendor not in vendors.VENDORS:
+        return JSONResponse({"ok": False, "error": "უცნობი ვენდორი"})
+    cam_id = db.next_cam_id()
+    host = (f.get("host") or "").strip()
+    name = (f.get("name") or "").strip() or f"{vendors.VENDORS[vendor]['label']} {host}"
+    port = _int(f.get("port"), vendors.VENDORS[vendor]["port"])
+    db.ex("INSERT INTO cameras(id,name,vendor,host,port,username,password,channel,onvif_port,"
+          "record,audio,enabled,created) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
+          (cam_id, name, vendor, host, port, (f.get("username") or "").strip(), f.get("password") or "",
+           _int(f.get("channel"), 1), vendors.VENDORS[vendor]["onvif_port"], 1, 1, 1, time.time()))
+    set_mode(cam_id, {}, "continuous", 0)
+    db.audit(u["username"], ip(request), f"კამერა დაემატა ავტომატურად {cam_id} ({name}, {vendor})")
+    try:
+        await go2rtc.sync_once()
+    except Exception:
+        go2rtc.kick.set()
+    recorder.get().kick.set()
+    return JSONResponse({"ok": True, "id": cam_id})
+
+
 @app.get("/admin/onvif", response_class=HTMLResponse)
 def onvif_page(request: Request):
     return page(request, "onvif.html", need(request, "admin"))
@@ -756,6 +953,18 @@ async def user_save(request: Request):
         db.ex("INSERT INTO user_cams VALUES(?,?)", (uid, c))
     db.audit(u["username"], ip(request), f"მომხმარებელი {uname}: როლი={role}, აქტიური={active}, კამერები={','.join(cam_ids) or '-'}")
     return back("/admin/users", msg=f"შენახულია: {uname}")
+
+
+@app.post("/admin/users/{uid}/2fa-reset")
+def user_2fa_reset(request: Request, uid: int):
+    u = need(request, "admin")
+    x = db.q1("SELECT username FROM users WHERE id=?", (uid,))
+    if not x:
+        raise HTTPException(404)
+    db.ex("UPDATE users SET totp_secret=NULL WHERE id=?", (uid,))
+    db.set_setting(_totp_pending_key(uid), "")
+    db.audit(u["username"], ip(request), f"ორფაქტორიანი ავტორიზაცია გაუუქმდა: {x['username']}")
+    return back("/admin/users", msg=f"2FA გაუუქმდა: {x['username']}")
 
 
 @app.post("/admin/users/{uid}/delete")

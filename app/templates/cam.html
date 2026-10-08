@@ -1,6 +1,7 @@
 {% extends "base.html" %}{% block title %}{{ cam.name }} — NVR{% endblock %}{% block body %}
 {% include "_player.html" %}
 <div class="row"><h2>{{ cam.name }}</h2><span class="sp"></span>
+{% if cam.has_sub %}<button type="button" class="btn" id="hq" hidden></button>{% endif %}
 {% if can_playback %}<a class="btn" href="/playback?cam={{ cam.id }}">ჩანაწერები</a>{% endif %}</div>
 <div class="camview{% if can_ptz %} with-ptz{% endif %}">
   <div class="player big" id="p"></div>
@@ -23,7 +24,21 @@
   </div>
   {% endif %}
 </div>
-<script>mountPlayer(document.getElementById('p'), {{ cam.id|tojson }});</script>
+<script>
+// Full view: main stream on the LAN; over the internet start on the light sub-stream, main on request.
+(() => {
+  const CAM = {{ cam.id|tojson }}, SUB = {{ cam.has_sub|tojson }}, REMOTE = {{ remote|tojson }};
+  const p = document.getElementById('p'), b = document.getElementById('hq');
+  let hq = !(REMOTE && SUB);
+  function show() {
+    mountPlayer(p, hq || !SUB ? CAM : CAM + '__sub');
+    if (b) { b.hidden = false; b.classList.toggle('primary', !hq);
+      b.textContent = hq ? 'დაბალ ხარისხზე გადართვა' : 'მაღალი ხარისხი (მთავარი ნაკადი)'; }
+  }
+  if (b) b.onclick = () => { hq = !hq; show(); };
+  show();
+})();
+</script>
 {% if can_ptz %}
 <script>
 (() => {
