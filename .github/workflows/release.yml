@@ -16,7 +16,7 @@ jobs:
       - name: RPM (Rocky Linux 9, x86_64)
         run: |
           docker run --rm -v "$PWD":/src -w /src rockylinux:9 bash -c \
-            "dnf -y -q install rpm-build python3.11 python3.11-pip tar && ./packaging/build-rpm.sh"
+            "dnf -y -q install rpm-build python3.11 python3.11-pip systemd-rpm-macros tar && ./packaging/build-rpm.sh"
       - uses: softprops/action-gh-release@v2
         with:
           files: |

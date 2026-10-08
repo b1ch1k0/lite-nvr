@@ -11,6 +11,7 @@
 %undefine __brp_python_bytecompile
 %global _python_bytecompile_errors_terminate_build 0
 %define go2rtc_version 1.9.14
+%{!?_unitdir: %global _unitdir /usr/lib/systemd/system}
 
 Name:           nvr
 Version:        %{nvr_version}
@@ -21,7 +22,7 @@ URL:            https://github.com/b1ch1k0/lite-nvr
 Source0:        nvr-%{version}.tar.gz
 Source1:        go2rtc_linux_%{go2rtc_arch}
 ExclusiveArch:  x86_64 aarch64
-BuildRequires:  python3.11 python3.11-pip
+BuildRequires:  python3.11 python3.11-pip systemd-rpm-macros
 Requires:       python3.11 nginx ffmpeg sqlite policycoreutils-python-utils util-linux rsync parted
 Recommends:     rclone
 Requires(pre):  shadow-utils

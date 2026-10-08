@@ -4,7 +4,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 VERSION=$(sed -n 's/^__version__ = "\(.*\)"/\1/p' app/__init__.py)
 case "$(uname -m)" in x86_64) GA=amd64 ;; aarch64) GA=arm64 ;; *) echo "unsupported arch"; exit 1 ;; esac
-command -v rpmbuild >/dev/null || dnf -y -q install rpm-build python3.11 python3.11-pip
+command -v rpmbuild >/dev/null && rpm -q systemd-rpm-macros >/dev/null || dnf -y -q install rpm-build python3.11 python3.11-pip systemd-rpm-macros tar
 TOP=$(mktemp -d); mkdir -p "$TOP"/{SOURCES,SPECS,BUILD,RPMS,SRPMS}
 tar --transform "s,^,nvr-$VERSION/," -czf "$TOP/SOURCES/nvr-$VERSION.tar.gz" app bin deploy requirements.txt LICENSE
 curl -fsSL -o "$TOP/SOURCES/go2rtc_linux_$GA" "https://github.com/AlexxIT/go2rtc/releases/download/v1.9.14/go2rtc_linux_$GA"
