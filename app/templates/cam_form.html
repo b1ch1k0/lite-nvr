@@ -10,7 +10,7 @@
   <label>სახელი<input name="name" value="{{ c.name or '' }}" placeholder="მაგ. ეზო, შესასვლელი"></label>
   <div class="cols">
     <label class="tpl">IP მისამართი<input name="host" value="{{ c.host or '' }}" placeholder="192.168.1.64"></label>
-    <label class="tpl">პორტი<input name="port" id="port" value="{{ c.port or '' }}"></label>
+    <label class="tpl">პორტი (RTSP)<input name="port" id="port" value="{{ c.port or '' }}"></label>
     <label class="tpl">არხი (NVR/DVR)<input name="channel" value="{{ c.channel or 1 }}"></label>
   </div>
   <div class="cols">

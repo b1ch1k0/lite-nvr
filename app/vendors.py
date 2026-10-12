@@ -8,7 +8,7 @@ VENDORS = {
     "hikvision": dict(label="Hikvision / HiWatch / EZVIZ", port=554, onvif_port=80,
                       main="rtsp://{auth}{host}:{port}/Streaming/Channels/{ch}01",
                       sub="rtsp://{auth}{host}:{port}/Streaming/Channels/{ch}02",
-                      hint="NVR/DVR-ის შემთხვევაში მიუთითეთ არხის ნომერი. EZVIZ-ზე პაროლი = Verification code."),
+                      hint="NVR/DVR: მიუთითეთ არხის ნომერი. გარე/გადამისამართებული NVR-ზე პორტის ველში ჩაწერეთ RTSP-ის გარე პორტი (მაგ. 7233). EZVIZ-ზე პაროლი = Verification code."),
     "dahua": dict(label="Dahua / IMOU / Amcrest", port=554, onvif_port=80,
                   main="rtsp://{auth}{host}:{port}/cam/realmonitor?channel={ch}&subtype=0",
                   sub="rtsp://{auth}{host}:{port}/cam/realmonitor?channel={ch}&subtype=1",
@@ -29,8 +29,9 @@ VENDORS = {
                   hint="იაფი ჩინური DVR/კამერები (XMEye აპი). პორტი ჩვეულებრივ 34567."),
     "onvif": dict(label="ONVIF (ავტომატური აღმოჩენა)", port=554, onvif_port=80, main=None, sub=None,
                   hint="გამოიყენეთ ღილაკი „ONVIF ძებნა“ — ნაკადის მისამართები თავად შეივსება."),
-    "rtsp": dict(label="სხვა — RTSP მისამართი ხელით", port=554, onvif_port=80, main=None, sub=None,
-                 hint="ჩაწერეთ სრული rtsp:// მისამართი. სახელი/პაროლი თავად ჩაემატება, თუ მისამართში არ არის."),
+    "rtsp": dict(label="სხვა — ხელით (ნებისმიერი პროტოკოლი/პორტი)", port=554, onvif_port=80, main=None, sub=None,
+                 hint="ჩაწერეთ სრული მისამართი ნებისმიერი პორტით: rtsp:// , rtsps:// , http:// (FLV/MJPEG) , onvif:// , dvrip:// . "
+                      "მაგ.: rtsp://203.0.113.10:7233/Streaming/Channels/101 . სახელი/პაროლი თავად ჩაემატება, თუ მისამართში არ არის."),
 }
 
 

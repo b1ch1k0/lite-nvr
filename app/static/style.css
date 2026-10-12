@@ -120,7 +120,20 @@ pre{background:rgba(0,0,0,.6);border:1px solid var(--line);border-radius:0;color
   background:repeating-linear-gradient(0deg,rgba(0,0,0,.25) 0 1px,transparent 1px 3px)}
 .player.zoomed{position:fixed;z-index:95;inset:2.5vh 2.5vw;width:auto;height:auto;aspect-ratio:auto;max-height:none;
   cursor:default;background:#000;box-shadow:0 0 0 1px var(--acc),0 0 36px rgba(33,243,208,.45)}
-.player.zoomed video{object-fit:contain}
+.player.zoomed video{object-fit:cover}
+/* grid tiles AND the enlarged view: fill the frame (crop a little) so 4:3 cameras don't sit
+   pillarboxed / squarish; only the standalone single-camera page keeps the full frame (contain).
+   Exception: a narrow portrait phone can't show 4:3 "wide" — cover would crop it to a sliver,
+   so there we fall back to the full frame; rotate to landscape for an edge-to-edge wide view. */
+.tile .player video{object-fit:cover}
+.tile .player .poster{background-size:cover}
+.tile .player.zoomed video{object-fit:cover}
+.tile .player.zoomed .poster{background-size:cover}
+@media(max-width:700px) and (orientation:portrait){
+  .player.zoomed video{object-fit:contain}
+  .tile .player.zoomed video{object-fit:contain}
+  .tile .player.zoomed .poster{background-size:contain}
+}
 .player.zoomed:after{opacity:1}
 body.has-zoom{overflow:hidden}
 .zoom-bar{position:absolute;top:0;left:0;right:0;z-index:3;display:flex;align-items:center;gap:8px;padding:9px 12px;
