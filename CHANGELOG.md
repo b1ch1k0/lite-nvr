@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.1.1 — 2026-10-12
+
+Fixed
+- **4:3 cameras no longer look squarish** — grid tiles and the enlarged (tap-to-zoom) view now fill the 16:9 frame (crop a little) instead of pillarboxing a 4:3 camera with black side bars. The full uncropped frame is still shown on the standalone single-camera page. On a narrow portrait phone the full frame is kept (cover would crop 4:3 to a sliver); rotate to landscape for the edge-to-edge wide view.
+
+Improved
+- **Non-standard-port / protocol cameras** — the "Other — manual" vendor now accepts any protocol and port (`rtsp` / `rtsps` / `http` / `onvif` / `dvrip`) with an example; the Hikvision hint explains that a forwarded/external NVR uses its external RTSP port in the port field; the port field is relabelled "port (RTSP)" to distinguish it from the web/ONVIF port.
+
 ## 1.1.0 — 2026-10-09
 
 New

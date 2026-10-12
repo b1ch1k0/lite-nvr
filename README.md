@@ -59,7 +59,7 @@ At the end the installer prints the **login link**, user and password (also save
 ```bash
 sudo dnf -y install epel-release dnf-plugins-core && sudo dnf config-manager --set-enabled crb
 sudo dnf -y install https://mirrors.rpmfusion.org/free/el/rpmfusion-free-release-9.noarch.rpm   # ffmpeg
-sudo dnf -y install https://github.com/b1ch1k0/lite-nvr/releases/latest/download/nvr-1.1.0-1.el9.x86_64.rpm
+sudo dnf -y install https://github.com/b1ch1k0/lite-nvr/releases/latest/download/nvr-1.1.1-1.el9.x86_64.rpm
 sudo cat /root/nvr-admin.txt
 ```
 The RPM is self-contained (Python dependencies and go2rtc included), no pip at install time.
